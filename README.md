@@ -1,23 +1,23 @@
 
-Zcash
+Komodo
 =====
  
-https://z.cash/
+https://komodoplatform.com/
  
 Where do I begin?
 -----------------
  
 We have a guide for joining the public testnet: https://github.com/zcash/zcash/wiki/Public-Alpha-Guide
  
-What is Zcash?
+What is Komodo?
 --------------
  
-Zcash is an implementation of the "Zerocash" protocol. Based on Bitcoin's code, it intends to
-offer a far higher standard of privacy and anonymity through a sophisticiated zero-knowledge
-proving scheme which preserves confidentiality of transaction metadata.
+Komodo aims at being the new standard for cryptocurrency security and anonymity. Protected by Zcash Zero Knowledger proofs users can make 100% untraceable transactions that are secured by Bitcoin‘s Petahash Proof of Work, due to Komodo’s new delayed Proof of Work consensus mechanism.
  
-**Zcash is unfinished and highly experimental.** Use at your own risk.
- 
+**Komodo is unfinished and highly experimental.** Use at your own risk.
+
+
+
 Participation in the Zcash project is subject to a [Code of Conduct](code_of_conduct.md).
  
 Security Warnings
