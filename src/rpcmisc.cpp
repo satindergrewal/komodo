@@ -39,8 +39,15 @@ using namespace std;
  *
  * Or alternatively, create a specific query method for the information.
  **/
+uint64_t komodo_interestsum();
+int32_t komodo_longestchain();
+int32_t komodo_notarized_height(uint256 *hashp,uint256 *txidp);
+int32_t komodo_whoami(char *pubkeystr,int32_t height);
+
 Value getinfo(const Array& params, bool fHelp)
 {
+    uint256 notarized_hash,notarized_desttxid;
+    int32_t notarized_height,longestchain;
     if (fHelp || params.size() != 0)
         throw runtime_error(
             "getinfo\n"
@@ -77,18 +84,28 @@ Value getinfo(const Array& params, bool fHelp)
 
     proxyType proxy;
     GetProxy(NET_IPV4, proxy);
+    notarized_height = komodo_notarized_height(&notarized_hash,&notarized_desttxid);
 
     Object obj;
     obj.push_back(Pair("version", CLIENT_VERSION));
     obj.push_back(Pair("protocolversion", PROTOCOL_VERSION));
+    obj.push_back(Pair("notarized", notarized_height));
+    obj.push_back(Pair("notarizedhash", notarized_hash.ToString()));
+    obj.push_back(Pair("notarizedtxid", notarized_desttxid.ToString()));
 #ifdef ENABLE_WALLET
     if (pwalletMain) {
         obj.push_back(Pair("walletversion", pwalletMain->GetVersion()));
         obj.push_back(Pair("balance",       ValueFromAmount(pwalletMain->GetBalance())));
+        obj.push_back(Pair("interest",       ValueFromAmount(komodo_interestsum())));
     }
 #endif
     obj.push_back(Pair("blocks",        (int)chainActive.Height()));
+    if ( (longestchain= komodo_longestchain()) != 0 && chainActive.Height() > longestchain )
+        longestchain = chainActive.Height();
+    obj.push_back(Pair("longestchain",        longestchain));
     obj.push_back(Pair("timeoffset",    GetTimeOffset()));
+    if ( chainActive.Tip() != 0 )
+        obj.push_back(Pair("tiptime", (int)chainActive.Tip()->nTime));
     obj.push_back(Pair("connections",   (int)vNodes.size()));
     obj.push_back(Pair("proxy",         (proxy.IsValid() ? proxy.proxy.ToStringIPPort() : string())));
     obj.push_back(Pair("difficulty",    (double)GetDifficulty()));
@@ -104,6 +121,12 @@ Value getinfo(const Array& params, bool fHelp)
 #endif
     obj.push_back(Pair("relayfee",      ValueFromAmount(::minRelayTxFee.GetFeePerK())));
     obj.push_back(Pair("errors",        GetWarnings("statusbar")));
+    {
+        char pubkeystr[65]; int32_t notaryid;
+        notaryid = komodo_whoami(pubkeystr,longestchain);
+        obj.push_back(Pair("notaryid",        notaryid));
+        obj.push_back(Pair("pubkey",        pubkeystr));
+    }
     return obj;
 }
 

@@ -81,10 +81,10 @@ Value importprivkey(const Array& params, bool fHelp)
     
     if (fHelp || params.size() < 1 || params.size() > 3)
         throw runtime_error(
-            "importprivkey \"bitcoinprivkey\" ( \"label\" rescan )\n"
+            "importprivkey \"zcashprivkey\" ( \"label\" rescan )\n"
             "\nAdds a private key (as returned by dumpprivkey) to your wallet.\n"
             "\nArguments:\n"
-            "1. \"bitcoinprivkey\"   (string, required) The private key (see dumpprivkey)\n"
+            "1. \"zcashprivkey\"   (string, required) The private key (see dumpprivkey)\n"
             "2. \"label\"            (string, optional, default=\"\") An optional label\n"
             "3. rescan               (boolean, optional, default=true) Rescan the wallet for transactions\n"
             "\nNote: This call can take minutes to complete if rescan is true.\n"
@@ -182,7 +182,7 @@ Value importaddress(const Array& params, bool fHelp)
         std::vector<unsigned char> data(ParseHex(params[0].get_str()));
         script = CScript(data.begin(), data.end());
     } else {
-        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid Bitcoin address or script");
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid Komodo address or script");
     }
 
     string strLabel = "";
@@ -305,11 +305,11 @@ Value importwallet_impl(const Array& params, bool fHelp, bool fImportZKeys)
                 libzcash::SpendingKey key = spendingkey.Get();
                 libzcash::PaymentAddress addr = key.address();
                 if (pwalletMain->HaveSpendingKey(addr)) {
-                    LogPrintf("Skipping import of zaddr %s (key already present)\n", CZCPaymentAddress(addr).ToString());
+                    LogPrint("zrpc", "Skipping import of zaddr %s (key already present)\n", CZCPaymentAddress(addr).ToString());
                     continue;
                 }
                 int64_t nTime = DecodeDumpTime(vstr[1]);
-                LogPrintf("Importing zaddr %s...\n", CZCPaymentAddress(addr).ToString());
+                LogPrint("zrpc", "Importing zaddr %s...\n", CZCPaymentAddress(addr).ToString());
                 if (!pwalletMain->AddZKey(key)) {
                     // Something went wrong
                     fGood = false;
@@ -320,8 +320,8 @@ Value importwallet_impl(const Array& params, bool fHelp, bool fImportZKeys)
                 continue;
             }
             catch (const std::runtime_error &e) {
-                LogPrintf("Importing detected an error: %s\n", e.what());
-                // Not a valid spending key, so carry on and see if it's a Bitcoin style address.
+                LogPrint("zrpc","Importing detected an error: %s\n", e.what());
+                // Not a valid spending key, so carry on and see if it's a Zcash style address.
             }
         }
 
@@ -388,11 +388,11 @@ Value dumpprivkey(const Array& params, bool fHelp)
     
     if (fHelp || params.size() != 1)
         throw runtime_error(
-            "dumpprivkey \"bitcoinaddress\"\n"
-            "\nReveals the private key corresponding to 'bitcoinaddress'.\n"
+            "dumpprivkey \"zcashaddress\"\n"
+            "\nReveals the private key corresponding to 'zcashaddress'.\n"
             "Then the importprivkey can be used with this output\n"
             "\nArguments:\n"
-            "1. \"bitcoinaddress\"   (string, required) The bitcoin address for the private key\n"
+            "1. \"zcashaddress\"   (string, required) The zcash address for the private key\n"
             "\nResult:\n"
             "\"key\"                (string) The private key\n"
             "\nExamples:\n"
@@ -408,7 +408,7 @@ Value dumpprivkey(const Array& params, bool fHelp)
     string strAddress = params[0].get_str();
     CBitcoinAddress address;
     if (!address.SetString(strAddress))
-        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid Bitcoin address");
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid Komodo address");
     CKeyID keyID;
     if (!address.GetKeyID(keyID))
         throw JSONRPCError(RPC_TYPE_ERROR, "Address does not refer to a key");
@@ -483,7 +483,7 @@ Value dumpwallet_impl(const Array& params, bool fHelp, bool fDumpZKeys)
     std::sort(vKeyBirth.begin(), vKeyBirth.end());
 
     // produce output
-    file << strprintf("# Wallet dump created by Zcash %s (%s)\n", CLIENT_BUILD, CLIENT_DATE);
+    file << strprintf("# Wallet dump created by Komodo %s (%s)\n", CLIENT_BUILD, CLIENT_DATE);
     file << strprintf("# * Created on %s\n", EncodeDumpTime(GetTime()));
     file << strprintf("# * Best block at time of backup was %i (%s),\n", chainActive.Height(), chainActive.Tip()->GetBlockHash().ToString());
     file << strprintf("#   mined on %s\n", EncodeDumpTime(chainActive.Tip()->GetBlockTime()));
@@ -532,9 +532,9 @@ Value z_importkey(const Array& params, bool fHelp)
     if (!EnsureWalletIsAvailable(fHelp))
         return Value::null;
 
-    if (fHelp || params.size() < 1 || params.size() > 3)
+    if (fHelp || params.size() < 1 || params.size() > 2)
         throw runtime_error(
-            "z_importkey \"zkey\" ( \"label\" rescan )\n"
+            "z_importkey \"zkey\" ( rescan )\n"
             "\nAdds a zkey (as returned by z_exportkey) to your wallet.\n"
             "\nArguments:\n"
             "1. \"zkey\"             (string, required) The zkey (see z_exportkey)\n"
@@ -545,10 +545,8 @@ Value z_importkey(const Array& params, bool fHelp)
             + HelpExampleCli("z_exportkey", "\"myaddress\"") +
             "\nImport the zkey with rescan\n"
             + HelpExampleCli("z_importkey", "\"mykey\"") +
-            "\nImport using a label and without rescan\n"
-            + HelpExampleCli("z_importkey", "\"mykey\" \"testing\" false") +
             "\nAs a JSON-RPC call\n"
-            + HelpExampleRpc("z_importkey", "\"mykey\", \"testing\", false")
+            + HelpExampleRpc("z_importkey", "\"mykey\", false")
         );
 
     LOCK2(cs_main, pwalletMain->cs_wallet);

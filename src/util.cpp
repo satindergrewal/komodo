@@ -107,9 +107,10 @@ bool fPrintToDebugLog = true;
 bool fDaemon = false;
 bool fServer = false;
 string strMiscWarning;
-bool fLogTimestamps = false;
-bool fLogIPs = false;
-volatile bool fReopenDebugLog = false;
+bool fLogTimestamps = DEFAULT_LOGTIMESTAMPS;
+bool fLogTimeMicros = DEFAULT_LOGTIMEMICROS;
+bool fLogIPs = DEFAULT_LOGIPS;
+std::atomic<bool> fReopenDebugLog(false);
 CTranslationInterface translationInterface;
 
 /** Init OpenSSL library multithreading support */
@@ -399,16 +400,24 @@ void PrintExceptionContinue(const std::exception* pex, const char* pszThread)
     strMiscWarning = message;
 }
 
+extern char ASSETCHAINS_SYMBOL[16];
+
 boost::filesystem::path GetDefaultDataDir()
 {
     namespace fs = boost::filesystem;
+    char symbol[16];
+    if ( ASSETCHAINS_SYMBOL[0] != 0 )
+        strcpy(symbol,ASSETCHAINS_SYMBOL);
+    else symbol[0] = 0;
     // Windows < Vista: C:\Documents and Settings\Username\Application Data\Zcash
     // Windows >= Vista: C:\Users\Username\AppData\Roaming\Zcash
     // Mac: ~/Library/Application Support/Zcash
     // Unix: ~/.zcash
 #ifdef WIN32
     // Windows
-    return GetSpecialFolderPath(CSIDL_APPDATA) / "Komodo";
+    if ( symbol[0] == 0 )
+        return GetSpecialFolderPath(CSIDL_APPDATA) / "Komodo";
+    else return GetSpecialFolderPath(CSIDL_APPDATA) / "Komodo" / symbol;
 #else
     fs::path pathRet;
     char* pszHome = getenv("HOME");
@@ -420,10 +429,19 @@ boost::filesystem::path GetDefaultDataDir()
     // Mac
     pathRet /= "Library/Application Support";
     TryCreateDirectory(pathRet);
-    return pathRet / "Komodo";
+    if ( symbol[0] == 0 )
+        return pathRet / "Komodo";
+    else
+    {
+        pathRet /= "Komodo";
+        TryCreateDirectory(pathRet);
+        return pathRet / symbol;
+    }
 #else
     // Unix
-    return pathRet / ".komodo";
+    if ( symbol[0] == 0 )
+        return pathRet / ".komodo";
+    else return pathRet / ".komodo" / symbol;
 #endif
 #endif
 }
@@ -478,7 +496,6 @@ const boost::filesystem::path &ZC_GetParamsDir()
         return path;
 
     path = ZC_GetBaseParamsDir();
-    path /= BaseParams().DataDir();
 
     return path;
 }
@@ -521,7 +538,11 @@ void ClearDatadirCache()
 
 boost::filesystem::path GetConfigFile()
 {
-    boost::filesystem::path pathConfigFile(GetArg("-conf", "komodo.conf"));
+    char confname[512];
+    if ( ASSETCHAINS_SYMBOL[0] != 0 )
+        sprintf(confname,"%s.conf",ASSETCHAINS_SYMBOL);
+    else strcpy(confname,"komodo.conf");
+    boost::filesystem::path pathConfigFile(GetArg("-conf",confname));
     if (!pathConfigFile.is_complete())
         pathConfigFile = GetDataDir(false) / pathConfigFile;
 

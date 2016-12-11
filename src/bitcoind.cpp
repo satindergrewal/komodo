@@ -32,6 +32,8 @@
  */
 
 static bool fDaemon;
+extern char ASSETCHAINS_SYMBOL[16];
+void komodo_passport_iteration();
 
 void WaitForShutdown(boost::thread_group* threadGroup)
 {
@@ -39,7 +41,8 @@ void WaitForShutdown(boost::thread_group* threadGroup)
     // Tell the main threads to shutdown.
     while (!fShutdown)
     {
-        MilliSleep(200);
+        MilliSleep(10000);
+        komodo_passport_iteration();
         fShutdown = ShutdownRequested();
     }
     if (threadGroup)
@@ -53,8 +56,10 @@ void WaitForShutdown(boost::thread_group* threadGroup)
 //
 // Start
 //
-extern int32_t IS_KOMODO_NOTARY,USE_EXTERNAL_PUBKEY;
+extern int32_t IS_KOMODO_NOTARY,USE_EXTERNAL_PUBKEY,ASSETCHAIN_INIT;
 extern std::string NOTARY_PUBKEY;
+int32_t komodo_is_issuer();
+void komodo_passport_iteration();
 
 bool AppInit(int argc, char* argv[])
 {
@@ -92,6 +97,16 @@ bool AppInit(int argc, char* argv[])
 
     try
     {
+        void komodo_args();
+        komodo_args();
+        fprintf(stderr,"call komodo_args NOTARY_PUBKEY.(%s)\n",NOTARY_PUBKEY.c_str());
+        while ( ASSETCHAIN_INIT == 0 )
+        {
+            //if ( komodo_is_issuer() != 0 )
+            //    komodo_passport_iteration();
+            sleep(1);
+        }
+        printf("initialized %s\n",ASSETCHAINS_SYMBOL);
         if (!boost::filesystem::is_directory(GetDataDir(false)))
         {
             fprintf(stderr, "Error: Specified data directory \"%s\" does not exist.\n", mapArgs["-datadir"].c_str());
@@ -109,12 +124,7 @@ bool AppInit(int argc, char* argv[])
             fprintf(stderr, "Error: Invalid combination of -regtest and -testnet.\n");
             return false;
         }
-        IS_KOMODO_NOTARY = GetBoolArg("-notary", false);
-        NOTARY_PUBKEY = GetArg("-pubkey", "");
-        if ( strlen(NOTARY_PUBKEY.c_str()) == 66 )
-            USE_EXTERNAL_PUBKEY = 1;
-        fprintf(stderr,"IS_KOMODO_NOTARY %d %s\n",IS_KOMODO_NOTARY,NOTARY_PUBKEY.c_str());
-        
+
         // Command-line RPC
         bool fCommandLine = false;
         for (int i = 1; i < argc; i++)
@@ -131,7 +141,7 @@ bool AppInit(int argc, char* argv[])
         fDaemon = GetBoolArg("-daemon", false);
         if (fDaemon)
         {
-            fprintf(stdout, "Komodo server starting\n");
+            fprintf(stdout, "Komodo %s server starting\n",ASSETCHAINS_SYMBOL);
 
             // Daemonize
             pid_t pid = fork();
