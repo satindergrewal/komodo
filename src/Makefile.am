@@ -516,9 +516,13 @@ endif
 	@test -f $(PROTOC)
 	$(AM_V_GEN) $(PROTOC) --cpp_out=$(@D) --proto_path=$(abspath $(<D) $<)
 
+UNAME_S := $(shell uname -s)
+
 if ENABLE_TESTS
 include Makefile.test.include
-include Makefile.gtest.include
+  ifeq ($(UNAME_S),Linux)
+    include Makefile.gtest.include
+  endif
 endif
 
 if ENABLE_QT
