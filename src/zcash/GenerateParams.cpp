@@ -3,6 +3,8 @@
 #include <iostream>
 #include "crypto/common.h"
 
+int64_t MAX_MONEY = 200000000 * 100000000LL;
+
 int main(int argc, char **argv)
 {
     if (init_and_check_sodium() == -1) {
@@ -18,13 +20,7 @@ int main(int argc, char **argv)
     std::string vkFile = argv[2];
     std::string r1csFile = argv[3];
 
-    auto p = ZCJoinSplit::Generate();
-
-    p->saveProvingKey(pkFile);
-    p->saveVerifyingKey(vkFile);
-    p->saveR1CS(r1csFile);
-
-    delete p;
+    ZCJoinSplit::Generate(r1csFile, vkFile, pkFile);
 
     return 0;
 }

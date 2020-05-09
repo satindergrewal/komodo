@@ -2,6 +2,21 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+/******************************************************************************
+ * Copyright © 2014-2019 The SuperNET Developers.                             *
+ *                                                                            *
+ * See the AUTHORS, DEVELOPER-AGREEMENT and LICENSE files at                  *
+ * the top-level directory of this distribution for the individual copyright  *
+ * holder information and the developer policies on copyright and licensing.  *
+ *                                                                            *
+ * Unless otherwise agreed in a custom licensing agreement, no part of the    *
+ * SuperNET software, including this file may be copied, modified, propagated *
+ * or distributed except according to the terms contained in the LICENSE file *
+ *                                                                            *
+ * Removal or modification of this copyright notice is prohibited.            *
+ *                                                                            *
+ ******************************************************************************/
+
 #ifndef BITCOIN_ADDRMAN_H
 #define BITCOIN_ADDRMAN_H
 
@@ -54,7 +69,7 @@ public:
     ADD_SERIALIZE_METHODS;
 
     template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action, int nType, int nVersion) {
+    inline void SerializationOp(Stream& s, Operation ser_action) {
         READWRITE(*(CAddress*)this);
         READWRITE(source);
         READWRITE(nLastSuccess);
@@ -234,7 +249,7 @@ protected:
     //! Select an address to connect to, if newOnly is set to true, only the new table is selected from.
     CAddrInfo Select_(bool newOnly);
 
-    //! Wraps GetRandInt to allow tests to override RandomInt and make it determinismistic.
+    //! Wraps GetRandInt to allow tests to override RandomInt and make it deterministic.
     virtual int RandomInt(int nMax);
 
 #ifdef DEBUG_ADDRMAN
@@ -279,7 +294,7 @@ public:
      * very little in common.
      */
     template<typename Stream>
-    void Serialize(Stream &s, int nType, int nVersionDummy) const
+    void Serialize(Stream &s) const
     {
         LOCK(cs);
 
@@ -329,7 +344,7 @@ public:
     }
 
     template<typename Stream>
-    void Unserialize(Stream& s, int nType, int nVersionDummy)
+    void Unserialize(Stream& s)
     {
         LOCK(cs);
 
@@ -434,11 +449,6 @@ public:
         Check();
     }
 
-    unsigned int GetSerializeSize(int nType, int nVersion) const
-    {
-        return (CSizeComputer(nType, nVersion) << *this).size();
-    }
-
     void Clear()
     {
         std::vector<int>().swap(vRandom);
@@ -470,7 +480,7 @@ public:
     }
 
     //! Return the number of (unique) addresses in all tables.
-    int size()
+    size_t size() const
     {
         return vRandom.size();
     }

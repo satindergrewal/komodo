@@ -7,10 +7,11 @@
 #include <boost/format.hpp>
 #include <boost/optional.hpp>
 
-#include "libsnark/common/default_types/r1cs_ppzksnark_pp.hpp"
-#include "libsnark/zk_proof_systems/ppzksnark/r1cs_ppzksnark/r1cs_ppzksnark.hpp"
-#include "libsnark/gadgetlib1/gadgets/hashes/sha256/sha256_gadget.hpp"
-#include "libsnark/gadgetlib1/gadgets/merkle_tree/merkle_tree_check_read_gadget.hpp"
+#include <libsnark/common/default_types/r1cs_ppzksnark_pp.hpp>
+#include <libsnark/zk_proof_systems/ppzksnark/r1cs_ppzksnark/r1cs_ppzksnark.hpp>
+#include <libsnark/gadgetlib1/gadgets/hashes/sha256/sha256_gadget.hpp>
+#include <libsnark/gadgetlib1/gadgets/merkle_tree/merkle_tree_check_read_gadget.hpp>
+
 #include "zcash/IncrementalMerkleTree.hpp"
 
 using namespace libsnark;
@@ -105,7 +106,7 @@ bool test_merkle_gadget(
     mgadget1.generate_r1cs_constraints();
     mgadget2.generate_r1cs_constraints();
 
-    ZCIncrementalMerkleTree tree;
+    SproutMerkleTree tree;
     uint256 commitment1_data = uint256S("54d626e08c1c802b305dad30b7e54a82f102390cc92c7d4db112048935236e9c");
     uint256 commitment2_data = uint256S("59d2cde5e65c1414c32ba54f0fe4bdb3d67618125286e6a191317917c812c6d7");
     tree.append(commitment1_data);

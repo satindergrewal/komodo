@@ -3,6 +3,21 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+/******************************************************************************
+ * Copyright © 2014-2019 The SuperNET Developers.                             *
+ *                                                                            *
+ * See the AUTHORS, DEVELOPER-AGREEMENT and LICENSE files at                  *
+ * the top-level directory of this distribution for the individual copyright  *
+ * holder information and the developer policies on copyright and licensing.  *
+ *                                                                            *
+ * Unless otherwise agreed in a custom licensing agreement, no part of the    *
+ * SuperNET software, including this file may be copied, modified, propagated *
+ * or distributed except according to the terms contained in the LICENSE file *
+ *                                                                            *
+ * Removal or modification of this copyright notice is prohibited.            *
+ *                                                                            *
+ ******************************************************************************/
+
 #ifndef BITCOIN_CONSENSUS_VALIDATION_H
 #define BITCOIN_CONSENSUS_VALIDATION_H
 
@@ -17,6 +32,7 @@ static const unsigned char REJECT_NONSTANDARD = 0x40;
 static const unsigned char REJECT_DUST = 0x41;
 static const unsigned char REJECT_INSUFFICIENTFEE = 0x42;
 static const unsigned char REJECT_CHECKPOINT = 0x43;
+static const unsigned char REJECT_HAVEBETTER = 0x44;
 
 /** Capture information about block/transaction validation */
 class CValidationState {
@@ -48,7 +64,7 @@ public:
                  unsigned char _chRejectCode=0, std::string _strRejectReason="") {
         return DoS(0, ret, _chRejectCode, _strRejectReason);
     }
-    virtual bool Error(std::string strRejectReasonIn="") {
+    virtual bool Error(const std::string& strRejectReasonIn) {
         if (mode == MODE_VALID)
             strRejectReason = strRejectReasonIn;
         mode = MODE_ERROR;

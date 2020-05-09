@@ -3,6 +3,21 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+/******************************************************************************
+ * Copyright © 2014-2019 The SuperNET Developers.                             *
+ *                                                                            *
+ * See the AUTHORS, DEVELOPER-AGREEMENT and LICENSE files at                  *
+ * the top-level directory of this distribution for the individual copyright  *
+ * holder information and the developer policies on copyright and licensing.  *
+ *                                                                            *
+ * Unless otherwise agreed in a custom licensing agreement, no part of the    *
+ * SuperNET software, including this file may be copied, modified, propagated *
+ * or distributed except according to the terms contained in the LICENSE file *
+ *                                                                            *
+ * Removal or modification of this copyright notice is prohibited.            *
+ *                                                                            *
+ ******************************************************************************/
+
 #ifndef BITCOIN_RANDOM_H
 #define BITCOIN_RANDOM_H
 
@@ -12,15 +27,9 @@
 #include <stdint.h>
 
 /**
- * Seed OpenSSL PRNG with additional entropy data
+ * Functions to gather random data via the libsodium CSPRNG
  */
-void RandAddSeed();
-void RandAddSeedPerfmon();
-
-/**
- * Functions to gather random data via the OpenSSL PRNG
- */
-void GetRandBytes(unsigned char* buf, int num);
+void GetRandBytes(unsigned char* buf, size_t num);
 uint64_t GetRand(uint64_t nMax);
 int GetRandInt(int nMax);
 uint256 GetRandHash();

@@ -3,6 +3,21 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+/******************************************************************************
+ * Copyright © 2014-2019 The SuperNET Developers.                             *
+ *                                                                            *
+ * See the AUTHORS, DEVELOPER-AGREEMENT and LICENSE files at                  *
+ * the top-level directory of this distribution for the individual copyright  *
+ * holder information and the developer policies on copyright and licensing.  *
+ *                                                                            *
+ * Unless otherwise agreed in a custom licensing agreement, no part of the    *
+ * SuperNET software, including this file may be copied, modified, propagated *
+ * or distributed except according to the terms contained in the LICENSE file *
+ *                                                                            *
+ * Removal or modification of this copyright notice is prohibited.            *
+ *                                                                            *
+ ******************************************************************************/
+
 #include "policy/fees.h"
 
 #include "amount.h"
@@ -16,10 +31,12 @@ void TxConfirmStats::Initialize(std::vector<double>& defaultBuckets,
 {
     decay = _decay;
     dataTypeString = _dataTypeString;
-    for (unsigned int i = 0; i < defaultBuckets.size(); i++) {
-        buckets.push_back(defaultBuckets[i]);
-        bucketMap[defaultBuckets[i]] = i;
+    buckets.insert(buckets.end(), defaultBuckets.begin(), defaultBuckets.end());
+    buckets.push_back(std::numeric_limits<double>::infinity());
+    for (unsigned int i = 0; i < buckets.size(); i++) {
+        bucketMap[buckets[i]] = i;
     }
+
     confAvg.resize(maxConfirms);
     curBlockConf.resize(maxConfirms);
     unconfTxs.resize(maxConfirms);
@@ -49,13 +66,25 @@ void TxConfirmStats::ClearCurrent(unsigned int nBlockHeight)
     }
 }
 
+unsigned int TxConfirmStats::FindBucketIndex(double val)
+{
+    extern char ASSETCHAINS_SYMBOL[KOMODO_ASSETCHAIN_MAXLEN];
+    auto it = bucketMap.lower_bound(val);
+    if ( it != bucketMap.end() )
+    {
+        //static uint32_t counter;
+        //if ( counter++ < 1 )
+        //    fprintf(stderr,"%s FindBucketIndex violation: from val %f\n",ASSETCHAINS_SYMBOL,val);
+    }
+    return it->second;
+}
 
 void TxConfirmStats::Record(int blocksToConfirm, double val)
 {
     // blocksToConfirm is 1-based
     if (blocksToConfirm < 1)
         return;
-    unsigned int bucketindex = bucketMap.lower_bound(val)->second;
+    unsigned int bucketindex = FindBucketIndex(val);
     for (size_t i = blocksToConfirm; i <= curBlockConf.size(); i++) {
         curBlockConf[i - 1][bucketindex]++;
     }
@@ -246,7 +275,7 @@ void TxConfirmStats::Read(CAutoFile& filein)
 
 unsigned int TxConfirmStats::NewTx(unsigned int nBlockHeight, double val)
 {
-    unsigned int bucketindex = bucketMap.lower_bound(val)->second;
+    unsigned int bucketindex = FindBucketIndex(val);
     unsigned int blockIndex = nBlockHeight % unconfTxs.size();
     unconfTxs[blockIndex][bucketindex]++;
     LogPrint("estimatefee", "adding to %s", dataTypeString);
@@ -306,7 +335,6 @@ CBlockPolicyEstimator::CBlockPolicyEstimator(const CFeeRate& _minRelayFee)
     for (double bucketBoundary = minTrackedFee.GetFeePerK(); bucketBoundary <= MAX_FEERATE; bucketBoundary *= FEE_SPACING) {
         vfeelist.push_back(bucketBoundary);
     }
-    vfeelist.push_back(INF_FEERATE);
     feeStats.Initialize(vfeelist, MAX_BLOCK_CONFIRMS, DEFAULT_DECAY, "FeeRate");
 
     minTrackedPriority = AllowFreeThreshold() < MIN_PRIORITY ? MIN_PRIORITY : AllowFreeThreshold();
@@ -314,7 +342,6 @@ CBlockPolicyEstimator::CBlockPolicyEstimator(const CFeeRate& _minRelayFee)
     for (double bucketBoundary = minTrackedPriority; bucketBoundary <= MAX_PRIORITY; bucketBoundary *= PRI_SPACING) {
         vprilist.push_back(bucketBoundary);
     }
-    vprilist.push_back(INF_PRIORITY);
     priStats.Initialize(vprilist, MAX_BLOCK_CONFIRMS, DEFAULT_DECAY, "Priority");
 
     feeUnlikely = CFeeRate(0);

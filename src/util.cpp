@@ -3,6 +3,21 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+/******************************************************************************
+ * Copyright © 2014-2019 The SuperNET Developers.                             *
+ *                                                                            *
+ * See the AUTHORS, DEVELOPER-AGREEMENT and LICENSE files at                  *
+ * the top-level directory of this distribution for the individual copyright  *
+ * holder information and the developer policies on copyright and licensing.  *
+ *                                                                            *
+ * Unless otherwise agreed in a custom licensing agreement, no part of the    *
+ * SuperNET software, including this file may be copied, modified, propagated *
+ * or distributed except according to the terms contained in the LICENSE file *
+ *                                                                            *
+ * Removal or modification of this copyright notice is prohibited.            *
+ *                                                                            *
+ ******************************************************************************/
+
 #if defined(HAVE_CONFIG_H)
 #include "config/bitcoin-config.h"
 #endif
@@ -15,15 +30,19 @@
 #include "sync.h"
 #include "utilstrencodings.h"
 #include "utiltime.h"
+#include "komodo_defs.h"
 
 #include <stdarg.h>
+#include <sstream>
+#include <vector>
+#include <stdio.h>
 
 #if (defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__))
 #include <pthread.h>
 #include <pthread_np.h>
 #endif
 
-#ifndef WIN32
+#ifndef _WIN32
 // for posix_fallocate
 #ifdef __linux__
 
@@ -82,7 +101,6 @@
 #include <boost/program_options/parsers.hpp>
 #include <boost/thread.hpp>
 #include <openssl/crypto.h>
-#include <openssl/rand.h>
 #include <openssl/conf.h>
 
 // Work around clang compilation problem in Boost 1.46:
@@ -125,7 +143,7 @@ void locking_callback(int mode, int i, const char* file, int line) NO_THREAD_SAF
 }
 
 // Init
-class CInit
+static class CInit
 {
 public:
     CInit()
@@ -142,19 +160,9 @@ public:
         // or corrupt. Explicitly tell OpenSSL not to try to load the file. The result for our libs will be
         // that the config appears to have been loaded and there are no modules/engines available.
         OPENSSL_no_config();
-
-#ifdef WIN32
-        // Seed OpenSSL PRNG with current contents of the screen
-        RAND_screen();
-#endif
-
-        // Seed OpenSSL PRNG with performance counter
-        RandAddSeed();
     }
     ~CInit()
     {
-        // Securely erase the memory used by the PRNG
-        RAND_cleanup();
         // Shutdown OpenSSL library multithreading support
         CRYPTO_set_locking_callback(NULL);
         for (int i = 0; i < CRYPTO_num_locks(); i++)
@@ -176,23 +184,65 @@ instance_of_cinit;
  */
 
 static boost::once_flag debugPrintInitFlag = BOOST_ONCE_INIT;
+
 /**
- * We use boost::call_once() to make sure these are initialized
- * in a thread-safe manner the first time called:
+ * We use boost::call_once() to make sure mutexDebugLog and
+ * vMsgsBeforeOpenLog are initialized in a thread-safe manner.
+ *
+ * NOTE: fileout, mutexDebugLog and sometimes vMsgsBeforeOpenLog
+ * are leaked on exit. This is ugly, but will be cleaned up by
+ * the OS/libc. When the shutdown sequence is fully audited and
+ * tested, explicit destruction of these objects can be implemented.
  */
 static FILE* fileout = NULL;
 static boost::mutex* mutexDebugLog = NULL;
+static list<string> *vMsgsBeforeOpenLog;
+
+[[noreturn]] void new_handler_terminate()
+{
+    // Rather than throwing std::bad-alloc if allocation fails, terminate
+    // immediately to (try to) avoid chain corruption.
+    // Since LogPrintf may itself allocate memory, set the handler directly
+    // to terminate first.
+    std::set_new_handler(std::terminate);
+    fputs("Error: Out of memory. Terminating.\n", stderr);
+    LogPrintf("Error: Out of memory. Terminating.\n");
+
+    // The log was successful, terminate now.
+    std::terminate();
+};
+
+static int FileWriteStr(const std::string &str, FILE *fp)
+{
+    return fwrite(str.data(), 1, str.size(), fp);
+}
 
 static void DebugPrintInit()
 {
-    assert(fileout == NULL);
     assert(mutexDebugLog == NULL);
+    mutexDebugLog = new boost::mutex();
+    vMsgsBeforeOpenLog = new list<string>;
+}
 
+void OpenDebugLog()
+{
+    boost::call_once(&DebugPrintInit, debugPrintInitFlag);
+    boost::mutex::scoped_lock scoped_lock(*mutexDebugLog);
+
+    assert(fileout == NULL);
+    assert(vMsgsBeforeOpenLog);
     boost::filesystem::path pathDebug = GetDataDir() / "debug.log";
     fileout = fopen(pathDebug.string().c_str(), "a");
     if (fileout) setbuf(fileout, NULL); // unbuffered
 
-    mutexDebugLog = new boost::mutex();
+    // dump buffered messages from before we opened the log
+    while (!vMsgsBeforeOpenLog->empty()) {
+        FileWriteStr(vMsgsBeforeOpenLog->front(), fileout);
+        vMsgsBeforeOpenLog->pop_front();
+    }
+
+    delete vMsgsBeforeOpenLog;
+    vMsgsBeforeOpenLog = NULL;
 }
 
 bool LogAcceptCategory(const char* category)
@@ -206,7 +256,7 @@ bool LogAcceptCategory(const char* category)
         // This helps prevent issues debugging global destructors,
         // where mapMultiArgs might be deleted before another
         // global destructor calls LogPrint()
-        static boost::thread_specific_ptr<set<string> > ptrCategory;
+        static boost::thread_specific_ptr<set<string>> ptrCategory;
         if (ptrCategory.get() == NULL)
         {
             const vector<string>& categories = mapMultiArgs["-debug"];
@@ -224,44 +274,67 @@ bool LogAcceptCategory(const char* category)
     return true;
 }
 
+/**
+ * fStartedNewLine is a state variable held by the calling context that will
+ * suppress printing of the timestamp when multiple calls are made that don't
+ * end in a newline. Initialize it to true, and hold it, in the calling context.
+ */
+static std::string LogTimestampStr(const std::string &str, bool *fStartedNewLine)
+{
+    string strStamped;
+
+    if (!fLogTimestamps)
+        return str;
+
+    if (*fStartedNewLine)
+        strStamped =  DateTimeStrFormat("%Y-%m-%d %H:%M:%S", GetTime()) + ' ' + str;
+    else
+        strStamped = str;
+
+    if (!str.empty() && str[str.size()-1] == '\n')
+        *fStartedNewLine = true;
+    else
+        *fStartedNewLine = false;
+
+    return strStamped;
+}
+
 int LogPrintStr(const std::string &str)
 {
     int ret = 0; // Returns total number of characters written
+    static bool fStartedNewLine = true;
     if (fPrintToConsole)
     {
         // print to console
         ret = fwrite(str.data(), 1, str.size(), stdout);
         fflush(stdout);
     }
-    else if (fPrintToDebugLog && AreBaseParamsConfigured())
+    else if (fPrintToDebugLog)
     {
-        static bool fStartedNewLine = true;
         boost::call_once(&DebugPrintInit, debugPrintInitFlag);
-
-        if (fileout == NULL)
-            return ret;
-
         boost::mutex::scoped_lock scoped_lock(*mutexDebugLog);
 
-        // reopen the log file, if requested
-        if (fReopenDebugLog) {
-            fReopenDebugLog = false;
-            boost::filesystem::path pathDebug = GetDataDir() / "debug.log";
-            if (freopen(pathDebug.string().c_str(),"a",fileout) != NULL)
-                setbuf(fileout, NULL); // unbuffered
+        string strTimestamped = LogTimestampStr(str, &fStartedNewLine);
+
+        // buffer if we haven't opened the log yet
+        if (fileout == NULL) {
+            assert(vMsgsBeforeOpenLog);
+            ret = strTimestamped.length();
+            vMsgsBeforeOpenLog->push_back(strTimestamped);
         }
-
-        // Debug print useful for profiling
-        if (fLogTimestamps && fStartedNewLine)
-            ret += fprintf(fileout, "%s ", DateTimeStrFormat("%Y-%m-%d %H:%M:%S", GetTime()).c_str());
-        if (!str.empty() && str[str.size()-1] == '\n')
-            fStartedNewLine = true;
         else
-            fStartedNewLine = false;
+        {
+            // reopen the log file, if requested
+            if (fReopenDebugLog) {
+                fReopenDebugLog = false;
+                boost::filesystem::path pathDebug = GetDataDir() / "debug.log";
+                if (freopen(pathDebug.string().c_str(),"a",fileout) != NULL)
+                    setbuf(fileout, NULL); // unbuffered
+            }
 
-        ret = fwrite(str.data(), 1, str.size(), fileout);
+            ret = FileWriteStr(strTimestamped, fileout);
+        }
     }
-
     return ret;
 }
 
@@ -295,7 +368,7 @@ void ParseParameters(int argc, const char* const argv[])
             strValue = str.substr(is_index+1);
             str = str.substr(0, is_index);
         }
-#ifdef WIN32
+#ifdef _WIN32
         boost::to_lower(str);
         if (boost::algorithm::starts_with(str, "/"))
             str = "-" + str.substr(1);
@@ -318,6 +391,60 @@ void ParseParameters(int argc, const char* const argv[])
     {
         // interpret -nofoo as -foo=0 (and -nofoo=0 as -foo=1) as long as -foo not set
         InterpretNegativeSetting(entry.first, mapArgs);
+    }
+}
+
+// split string using by space or comma as a delimiter char
+void SplitStr(const std::string& strVal, std::vector<std::string> &outVals)
+{
+    stringstream ss(strVal);
+    
+    while (!ss.eof()) {
+        int c;
+        std::string str;
+
+        while (std::isspace(ss.peek()))
+            ss.ignore();
+
+        while ((c = ss.get()) != EOF && !std::isspace(c) && c != ',')
+            str += c;
+
+        if (!str.empty())
+            outVals.push_back(str);
+    }
+}
+
+void Split(const std::string& strVal, int32_t outsize, uint64_t *outVals, const uint64_t nDefault)
+{
+    stringstream ss(strVal);
+    vector<uint64_t> vec;
+
+    uint64_t i, nLast, numVals = 0;
+
+    while ( ss.peek() == ' ' )
+        ss.ignore();
+
+    while ( ss >> i )
+    {
+        outVals[numVals] = i;
+        numVals += 1;
+
+        while ( ss.peek() == ' ' )
+            ss.ignore();
+        if ( ss.peek() == ',' )
+            ss.ignore();
+        while ( ss.peek() == ' ' )
+            ss.ignore();
+    }
+
+    if ( numVals > 0 )
+        nLast = outVals[numVals - 1];
+    else
+        nLast = nDefault;
+
+    for ( i = numVals; i < outsize; i++ )
+    {
+        outVals[i] = nLast;
     }
 }
 
@@ -379,7 +506,7 @@ std::string HelpMessageOpt(const std::string &option, const std::string &message
 
 static std::string FormatException(const std::exception* pex, const char* pszThread)
 {
-#ifdef WIN32
+#ifdef _WIN32
     char pszModule[MAX_PATH] = "";
     GetModuleFileNameA(NULL, pszModule, sizeof(pszModule));
 #else
@@ -401,20 +528,23 @@ void PrintExceptionContinue(const std::exception* pex, const char* pszThread)
     strMiscWarning = message;
 }
 
-extern char ASSETCHAINS_SYMBOL[16];
+extern char ASSETCHAINS_SYMBOL[KOMODO_ASSETCHAIN_MAXLEN];
+//int64_t MAX_MONEY = 200000000 * 100000000LL;
 
 boost::filesystem::path GetDefaultDataDir()
 {
     namespace fs = boost::filesystem;
-    char symbol[16];
-    if ( ASSETCHAINS_SYMBOL[0] != 0 )
+    char symbol[KOMODO_ASSETCHAIN_MAXLEN];
+    if ( ASSETCHAINS_SYMBOL[0] != 0 ){
         strcpy(symbol,ASSETCHAINS_SYMBOL);
+    }
+    
     else symbol[0] = 0;
     // Windows < Vista: C:\Documents and Settings\Username\Application Data\Zcash
     // Windows >= Vista: C:\Users\Username\AppData\Roaming\Zcash
     // Mac: ~/Library/Application Support/Zcash
     // Unix: ~/.zcash
-#ifdef WIN32
+#ifdef _WIN32
     // Windows
     if ( symbol[0] == 0 )
         return GetSpecialFolderPath(CSIDL_APPDATA) / "Komodo";
@@ -461,11 +591,10 @@ static boost::filesystem::path ZC_GetBaseParamsDir()
     // Windows >= Vista: C:\Users\Username\AppData\Roaming\ZcashParams
     // Mac: ~/Library/Application Support/ZcashParams
     // Unix: ~/.zcash-params
-#ifdef WIN32
-    // Windows
+    fs::path pathRet;
+#ifdef _WIN32
     return GetSpecialFolderPath(CSIDL_APPDATA) / "ZcashParams";
 #else
-    fs::path pathRet;
     char* pszHome = getenv("HOME");
     if (pszHome == NULL || strlen(pszHome) == 0)
         pathRet = fs::path("/");
@@ -501,6 +630,26 @@ const boost::filesystem::path &ZC_GetParamsDir()
     return path;
 }
 
+// Return the user specified export directory.  Create directory if it doesn't exist.
+// If user did not set option, return an empty path.
+// If there is a filesystem problem, throw an exception.
+const boost::filesystem::path GetExportDir()
+{
+    namespace fs = boost::filesystem;
+    fs::path path;
+    if (mapArgs.count("-exportdir")) {
+        path = fs::system_complete(mapArgs["-exportdir"]);
+        if (fs::exists(path) && !fs::is_directory(path)) {
+            throw std::runtime_error(strprintf("The -exportdir '%s' already exists and is not a directory", path.string()));
+        }
+        if (!fs::exists(path) && !fs::create_directories(path)) {
+            throw std::runtime_error(strprintf("Failed to create directory at -exportdir '%s'", path.string()));
+        }
+    }
+    return path;
+}
+
+
 const boost::filesystem::path &GetDataDir(bool fNetSpecific)
 {
     namespace fs = boost::filesystem;
@@ -511,8 +660,9 @@ const boost::filesystem::path &GetDataDir(bool fNetSpecific)
 
     // This can be called during exceptions by LogPrintf(), so we cache the
     // value so we don't have to do memory allocations after that.
-    if (!path.empty())
+    if (!path.empty()){
         return path;
+    }
 
     if (mapArgs.count("-datadir")) {
         path = fs::system_complete(mapArgs["-datadir"]);
@@ -541,23 +691,33 @@ void ClearDatadirCache()
 boost::filesystem::path GetConfigFile()
 {
     char confname[512];
-    if ( ASSETCHAINS_SYMBOL[0] != 0 )
+    if ( !mapArgs.count("-conf") && ASSETCHAINS_SYMBOL[0] != 0 ){
         sprintf(confname,"%s.conf",ASSETCHAINS_SYMBOL);
-    else strcpy(confname,"komodo.conf");
+    }
+    else
+    {
+#ifdef __APPLE__
+        strcpy(confname,"Komodo.conf");
+#else
+        strcpy(confname,"komodo.conf");
+#endif
+    }
     boost::filesystem::path pathConfigFile(GetArg("-conf",confname));
-    if (!pathConfigFile.is_complete())
+    if (!pathConfigFile.is_complete()){
         pathConfigFile = GetDataDir(false) / pathConfigFile;
+    }
 
+    //printf("DEBUG - util.cpp:710 correct pathConfigFile: %s\n",GetConfigFile().string().c_str());
     return pathConfigFile;
 }
 
 void ReadConfigFile(map<string, string>& mapSettingsRet,
                     map<string, vector<string> >& mapMultiSettingsRet)
 {
+
     boost::filesystem::ifstream streamConfig(GetConfigFile());
     if (!streamConfig.good())
-        return; // No komodo.conf file is OK
-
+        throw missing_zcash_conf();
     set<string> setOptions;
     setOptions.insert("*");
 
@@ -575,9 +735,11 @@ void ReadConfigFile(map<string, string>& mapSettingsRet,
     }
     // If datadir is changed in .conf file:
     ClearDatadirCache();
+    extern uint16_t BITCOIND_RPCPORT;
+    BITCOIND_RPCPORT = GetArg("-rpcport",BaseParams().RPCPort());
 }
 
-#ifndef WIN32
+#ifndef _WIN32
 boost::filesystem::path GetPidFile()
 {
     boost::filesystem::path pathPidFile(GetArg("-pid", "komodod.pid"));
@@ -598,13 +760,13 @@ void CreatePidFile(const boost::filesystem::path &path, pid_t pid)
 
 bool RenameOver(boost::filesystem::path src, boost::filesystem::path dest)
 {
-#ifdef WIN32
+#ifdef _WIN32
     return MoveFileExA(src.string().c_str(), dest.string().c_str(),
                        MOVEFILE_REPLACE_EXISTING) != 0;
 #else
     int rc = std::rename(src.string().c_str(), dest.string().c_str());
     return (rc == 0);
-#endif /* WIN32 */
+#endif /* _WIN32 */
 }
 
 /**
@@ -629,7 +791,7 @@ bool TryCreateDirectory(const boost::filesystem::path& p)
 void FileCommit(FILE *fileout)
 {
     fflush(fileout); // harmless if redundantly called
-#ifdef WIN32
+#ifdef _WIN32
     HANDLE hFile = (HANDLE)_get_osfhandle(_fileno(fileout));
     FlushFileBuffers(hFile);
 #else
@@ -744,7 +906,7 @@ void ShrinkDebugFile()
         fclose(file);
 }
 
-#ifdef WIN32
+#ifdef _WIN32
 boost::filesystem::path GetSpecialFolderPath(int nFolder, bool fCreate)
 {
     namespace fs = boost::filesystem;
@@ -767,7 +929,7 @@ boost::filesystem::path GetTempPath() {
 #else
     // TODO: remove when we don't support filesystem v2 anymore
     boost::filesystem::path path;
-#ifdef WIN32
+#ifdef _WIN32
     char pszPath[MAX_PATH] = "";
 
     if (GetTempPathA(MAX_PATH, pszPath))
@@ -783,7 +945,7 @@ boost::filesystem::path GetTempPath() {
 #endif
 }
 
-void runCommand(std::string strCommand)
+void runCommand(const std::string& strCommand)
 {
     int nErr = ::system(strCommand.c_str());
     if (nErr)
@@ -825,15 +987,56 @@ void SetupEnvironment()
     boost::filesystem::path::imbue(loc);
 }
 
+bool SetupNetworking()
+{
+#ifdef _WIN32
+    // Initialize Windows Sockets
+    WSADATA wsadata;
+    int ret = WSAStartup(MAKEWORD(2,2), &wsadata);
+    if (ret != NO_ERROR || LOBYTE(wsadata.wVersion ) != 2 || HIBYTE(wsadata.wVersion) != 2)
+        return false;
+#endif
+    return true;
+}
+
 void SetThreadPriority(int nPriority)
 {
-#ifdef WIN32
+#ifdef _WIN32
     SetThreadPriority(GetCurrentThread(), nPriority);
-#else // WIN32
+#else // _WIN32
 #ifdef PRIO_THREAD
     setpriority(PRIO_THREAD, 0, nPriority);
 #else // PRIO_THREAD
     setpriority(PRIO_PROCESS, 0, nPriority);
 #endif // PRIO_THREAD
-#endif // WIN32
+#endif // _WIN32
 }
+
+std::string PrivacyInfo()
+{
+    return "\n" +
+           FormatParagraph(strprintf(_("In order to ensure you are adequately protecting your privacy when using Zcash, please see <%s>."),
+                                     "https://z.cash/support/security/")) + "\n";
+}
+
+std::string LicenseInfo()
+{
+    return "\n" +
+           FormatParagraph(strprintf(_("Copyright (C) 2009-%i The Bitcoin Core Developers"), COPYRIGHT_YEAR)) + "\n" +
+           FormatParagraph(strprintf(_("Copyright (C) 2015-%i The Zcash Developers"), COPYRIGHT_YEAR)) + "\n" +
+           FormatParagraph(strprintf(_("Copyright (C) 2015-%i jl777 and SuperNET developers"), COPYRIGHT_YEAR)) + "\n" +
+           FormatParagraph(strprintf(_("Copyright (C) 2018-%i The Verus developers"), COPYRIGHT_YEAR)) + "\n" +
+           "\n" +
+           FormatParagraph(_("This is experimental software.")) + "\n" +
+           "\n" +
+           FormatParagraph(_("Distributed under the MIT software license, see the accompanying file COPYING or <http://www.opensource.org/licenses/mit-license.php>.")) + "\n" +
+           "\n" +
+           FormatParagraph(_("This product includes software developed by the OpenSSL Project for use in the OpenSSL Toolkit <https://www.openssl.org/> and cryptographic software written by Eric Young.")) +
+           "\n";
+}
+
+int GetNumCores()
+{
+    return boost::thread::physical_concurrency();
+}
+

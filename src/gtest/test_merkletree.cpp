@@ -7,6 +7,13 @@
 #include "test/data/merkle_path.json.h"
 #include "test/data/merkle_commitments.json.h"
 
+#include "test/data/merkle_roots_sapling.json.h"
+#include "test/data/merkle_roots_empty_sapling.json.h"
+#include "test/data/merkle_serialization_sapling.json.h"
+#include "test/data/merkle_witness_serialization_sapling.json.h"
+#include "test/data/merkle_path_sapling.json.h"
+#include "test/data/merkle_commitments_sapling.json.h"
+
 #include <iostream>
 
 #include <stdexcept>
@@ -19,10 +26,10 @@
 #include "zcash/IncrementalMerkleTree.hpp"
 #include "zcash/util.h"
 
-#include "libsnark/common/default_types/r1cs_ppzksnark_pp.hpp"
-#include "libsnark/zk_proof_systems/ppzksnark/r1cs_ppzksnark/r1cs_ppzksnark.hpp"
-#include "libsnark/gadgetlib1/gadgets/hashes/sha256/sha256_gadget.hpp"
-#include "libsnark/gadgetlib1/gadgets/merkle_tree/merkle_tree_check_read_gadget.hpp"
+#include <libsnark/common/default_types/r1cs_ppzksnark_pp.hpp>
+#include <libsnark/zk_proof_systems/ppzksnark/r1cs_ppzksnark/r1cs_ppzksnark.hpp>
+#include <libsnark/gadgetlib1/gadgets/hashes/sha256/sha256_gadget.hpp>
+#include <libsnark/gadgetlib1/gadgets/merkle_tree/merkle_tree_check_read_gadget.hpp>
 
 #include <boost/foreach.hpp>
 
@@ -32,22 +39,12 @@ using namespace std;
 using namespace libsnark;
 
 template<>
-void expect_deser_same(const ZCTestingIncrementalWitness& expected)
+void expect_deser_same(const SproutTestingWitness& expected)
 {
     // Cannot check this; IncrementalWitness cannot be
     // deserialized because it can only be constructed by
     // IncrementalMerkleTree, and it does not yet have a
     // canonical serialized representation.
-}
-
-template<>
-void expect_deser_same(const libzcash::MerklePath& expected)
-{
-    // This deserialization check is pointless for MerklePath,
-    // since we only serialize it to check it against test
-    // vectors. See `expect_test_vector` for that. Also,
-    // it doesn't seem that vector<bool> can be properly
-    // deserialized by Bitcoin's serialization code.
 }
 
 template<typename A, typename B, typename C>
@@ -57,18 +54,16 @@ void expect_ser_test_vector(B& b, const C& c, const A& tree) {
 
 template<typename Tree, typename Witness>
 void test_tree(
-    Array commitment_tests,
-    Array root_tests,
-    Array ser_tests,
-    Array witness_ser_tests,
-    Array path_tests
+    UniValue commitment_tests,
+    UniValue root_tests,
+    UniValue ser_tests,
+    UniValue witness_ser_tests,
+    UniValue path_tests,
+    bool libsnark_test
 )
 {
-    Array::iterator commitment_iterator = commitment_tests.begin();
-    Array::iterator root_iterator = root_tests.begin();
-    Array::iterator ser_iterator = ser_tests.begin();
-    Array::iterator witness_ser_iterator = witness_ser_tests.begin();
-    Array::iterator path_iterator = path_tests.begin();
+    size_t witness_ser_i = 0;
+    size_t path_i = 0;
 
     Tree tree;
 
@@ -79,13 +74,16 @@ void test_tree(
     // The tree doesn't have a 'last' element added since it's blank.
     ASSERT_THROW(tree.last(), std::runtime_error);
 
+    // The tree is empty.
+    ASSERT_TRUE(tree.size() == 0);
+
     // We need to witness at every single point in the tree, so
     // that the consistency of the tree and the merkle paths can
     // be checked.
     vector<Witness> witnesses;
 
     for (size_t i = 0; i < 16; i++) {
-        uint256 test_commitment = uint256S((commitment_iterator++)->get_str());
+        uint256 test_commitment = uint256S(commitment_tests[i].get_str());
 
         // Witness here
         witnesses.push_back(tree.witness());
@@ -93,14 +91,17 @@ void test_tree(
         // Now append a commitment to the tree
         tree.append(test_commitment);
 
+        // Size incremented by one.
+        ASSERT_TRUE(tree.size() == i+1);
+
         // Last element added to the tree was `test_commitment`
         ASSERT_TRUE(tree.last() == test_commitment);
 
         // Check tree root consistency
-        expect_test_vector(root_iterator, tree.root());
+        expect_test_vector(root_tests[i], tree.root());
 
         // Check serialization of tree
-        expect_ser_test_vector(ser_iterator, tree, tree);
+        expect_ser_test_vector(ser_tests[i], tree, tree);
 
         bool first = true; // The first witness can never form a path
         BOOST_FOREACH(Witness& wit, witnesses)
@@ -113,10 +114,9 @@ void test_tree(
                 ASSERT_THROW(wit.element(), std::runtime_error);
             } else {
                 auto path = wit.path();
+                expect_test_vector(path_tests[path_i++], path);
 
-                {
-                    expect_test_vector(path_iterator, path);
-                    
+                if (libsnark_test) {
                     typedef Fr<default_r1cs_ppzksnark_pp> FieldT;
 
                     protoboard<FieldT> pb;
@@ -143,7 +143,7 @@ void test_tree(
                     size_t path_index = convertVectorToInt(path.index);
 
                     commitment.bits.fill_with_bits(pb, bit_vector(commitment_bv));
-                    positions.fill_with_bits_of_ulong(pb, path_index);
+                    positions.fill_with_bits_of_uint64(pb, path_index);
 
                     authvars.generate_r1cs_witness(path_index, path.authentication_path);
                     auth.generate_r1cs_witness();
@@ -167,7 +167,7 @@ void test_tree(
             }
 
             // Check witness serialization
-            expect_ser_test_vector(witness_ser_iterator, wit, tree);
+            expect_ser_test_vector(witness_ser_tests[witness_ser_i++], wit, tree);
 
             ASSERT_TRUE(wit.root() == tree.root());
 
@@ -186,28 +186,66 @@ void test_tree(
     }
 }
 
-TEST(merkletree, vectors) {
-    Array root_tests = read_json(std::string(json_tests::merkle_roots, json_tests::merkle_roots + sizeof(json_tests::merkle_roots)));
-    Array ser_tests = read_json(std::string(json_tests::merkle_serialization, json_tests::merkle_serialization + sizeof(json_tests::merkle_serialization)));
-    Array witness_ser_tests = read_json(std::string(json_tests::merkle_witness_serialization, json_tests::merkle_witness_serialization + sizeof(json_tests::merkle_witness_serialization)));
-    Array path_tests = read_json(std::string(json_tests::merkle_path, json_tests::merkle_path + sizeof(json_tests::merkle_path)));
-    Array commitment_tests = read_json(std::string(json_tests::merkle_commitments, json_tests::merkle_commitments + sizeof(json_tests::merkle_commitments)));
+#define MAKE_STRING(x) std::string((x), (x)+sizeof(x))
 
-    test_tree<ZCTestingIncrementalMerkleTree, ZCTestingIncrementalWitness>(commitment_tests, root_tests, ser_tests, witness_ser_tests, path_tests);
+TEST(merkletree, vectors) {
+    UniValue root_tests = read_json(MAKE_STRING(json_tests::merkle_roots));
+    UniValue ser_tests = read_json(MAKE_STRING(json_tests::merkle_serialization));
+    UniValue witness_ser_tests = read_json(MAKE_STRING(json_tests::merkle_witness_serialization));
+    UniValue path_tests = read_json(MAKE_STRING(json_tests::merkle_path));
+    UniValue commitment_tests = read_json(MAKE_STRING(json_tests::merkle_commitments));
+
+    test_tree<SproutTestingMerkleTree, SproutTestingWitness>(
+        commitment_tests,
+        root_tests,
+        ser_tests,
+        witness_ser_tests,
+        path_tests,
+        true
+    );
+}
+
+TEST(merkletree, SaplingVectors) {
+    UniValue root_tests = read_json(MAKE_STRING(json_tests::merkle_roots_sapling));
+    UniValue ser_tests = read_json(MAKE_STRING(json_tests::merkle_serialization_sapling));
+    UniValue witness_ser_tests = read_json(MAKE_STRING(json_tests::merkle_witness_serialization_sapling));
+    UniValue path_tests = read_json(MAKE_STRING(json_tests::merkle_path_sapling));
+    UniValue commitment_tests = read_json(MAKE_STRING(json_tests::merkle_commitments_sapling));
+
+    test_tree<SaplingTestingMerkleTree, SaplingTestingWitness>(
+        commitment_tests,
+        root_tests,
+        ser_tests,
+        witness_ser_tests,
+        path_tests,
+        false
+    );
 }
 
 TEST(merkletree, emptyroots) {
-    Array empty_roots = read_json(std::string(json_tests::merkle_roots_empty, json_tests::merkle_roots_empty + sizeof(json_tests::merkle_roots_empty)));
-    Array::iterator root_iterator = empty_roots.begin();
+    UniValue empty_roots = read_json(MAKE_STRING(json_tests::merkle_roots_empty));
 
     libzcash::EmptyMerkleRoots<64, libzcash::SHA256Compress> emptyroots;
 
     for (size_t depth = 0; depth <= 64; depth++) {
-        expect_test_vector(root_iterator, emptyroots.empty_root(depth));
+        expect_test_vector(empty_roots[depth], emptyroots.empty_root(depth));
     }
 
     // Double check that we're testing (at least) all the empty roots we'll use.
     ASSERT_TRUE(INCREMENTAL_MERKLE_TREE_DEPTH <= 64);
+}
+
+TEST(merkletree, EmptyrootsSapling) {
+    UniValue empty_roots = read_json(MAKE_STRING(json_tests::merkle_roots_empty_sapling));
+
+    libzcash::EmptyMerkleRoots<62, libzcash::PedersenHash> emptyroots;
+
+    for (size_t depth = 0; depth <= 62; depth++) {
+        expect_test_vector(empty_roots[depth], emptyroots.empty_root(depth));
+    }
+
+    // Double check that we're testing (at least) all the empty roots we'll use.
+    ASSERT_TRUE(INCREMENTAL_MERKLE_TREE_DEPTH <= 62);
 }
 
 TEST(merkletree, emptyroot) {
@@ -216,13 +254,22 @@ TEST(merkletree, emptyroot) {
     // an integer which converted to little-endian internally.
     uint256 expected = uint256S("59d2cde5e65c1414c32ba54f0fe4bdb3d67618125286e6a191317917c812c6d7");
 
-    ASSERT_TRUE(ZCIncrementalMerkleTree::empty_root() == expected);
+    ASSERT_TRUE(SproutMerkleTree::empty_root() == expected);
+}
+
+TEST(merkletree, EmptyrootSapling) {
+    // This literal is the depth-20 empty tree root with the bytes reversed to
+    // account for the fact that uint256S() loads a big-endian representation of
+    // an integer which converted to little-endian internally.
+    uint256 expected = uint256S("3e49b5f954aa9d3545bc6c37744661eea48d7c34e3000d82b7f0010c30f4c2fb");
+
+    ASSERT_TRUE(SaplingMerkleTree::empty_root() == expected);
 }
 
 TEST(merkletree, deserializeInvalid) {
     // attempt to deserialize a small tree from a serialized large tree
     // (exceeds depth well-formedness check)
-    ZCIncrementalMerkleTree newTree;
+    SproutMerkleTree newTree;
 
     for (size_t i = 0; i < 16; i++) {
         newTree.append(uint256S("54d626e08c1c802b305dad30b7e54a82f102390cc92c7d4db112048935236e9c"));
@@ -233,7 +280,7 @@ TEST(merkletree, deserializeInvalid) {
     CDataStream ss(SER_NETWORK, PROTOCOL_VERSION);
     ss << newTree;
 
-    ZCTestingIncrementalMerkleTree newTreeSmall;
+    SproutTestingMerkleTree newTreeSmall;
     ASSERT_THROW({ss >> newTreeSmall;}, std::ios_base::failure);
 }
 
@@ -245,7 +292,7 @@ TEST(merkletree, deserializeInvalid2) {
         PROTOCOL_VERSION
     );
 
-    ZCIncrementalMerkleTree tree;
+    SproutMerkleTree tree;
     ASSERT_THROW(ss >> tree, std::ios_base::failure);
 }
 
@@ -257,7 +304,7 @@ TEST(merkletree, deserializeInvalid3) {
         PROTOCOL_VERSION
     );
 
-    ZCIncrementalMerkleTree tree;
+    SproutMerkleTree tree;
     ASSERT_THROW(ss >> tree, std::ios_base::failure);
 }
 
@@ -269,15 +316,15 @@ TEST(merkletree, deserializeInvalid4) {
         PROTOCOL_VERSION
     );
 
-    ZCIncrementalMerkleTree tree;
+    SproutMerkleTree tree;
     ASSERT_THROW(ss >> tree, std::ios_base::failure);
 }
 
 TEST(merkletree, testZeroElements) {
     for (int start = 0; start < 20; start++) {
-        ZCIncrementalMerkleTree newTree;
+        SproutMerkleTree newTree;
 
-        ASSERT_TRUE(newTree.root() == ZCIncrementalMerkleTree::empty_root());
+        ASSERT_TRUE(newTree.root() == SproutMerkleTree::empty_root());
 
         for (int i = start; i > 0; i--) {
             newTree.append(uint256S("54d626e08c1c802b305dad30b7e54a82f102390cc92c7d4db112048935236e9c"));

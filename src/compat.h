@@ -3,6 +3,21 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+/******************************************************************************
+ * Copyright © 2014-2019 The SuperNET Developers.                             *
+ *                                                                            *
+ * See the AUTHORS, DEVELOPER-AGREEMENT and LICENSE files at                  *
+ * the top-level directory of this distribution for the individual copyright  *
+ * holder information and the developer policies on copyright and licensing.  *
+ *                                                                            *
+ * Unless otherwise agreed in a custom licensing agreement, no part of the    *
+ * SuperNET software, including this file may be copied, modified, propagated *
+ * or distributed except according to the terms contained in the LICENSE file *
+ *                                                                            *
+ * Removal or modification of this copyright notice is prohibited.            *
+ *                                                                            *
+ ******************************************************************************/
+
 #ifndef BITCOIN_COMPAT_H
 #define BITCOIN_COMPAT_H
 
@@ -10,7 +25,7 @@
 #include "config/bitcoin-config.h"
 #endif
 
-#ifdef WIN32
+#ifdef _WIN32
 #ifdef _WIN32_WINNT
 #undef _WIN32_WINNT
 #endif
@@ -46,7 +61,7 @@
 #include <unistd.h>
 #endif
 
-#ifdef WIN32
+#ifdef _WIN32
 #define MSG_DONTWAIT        0
 #else
 typedef u_int SOCKET;
@@ -64,7 +79,7 @@ typedef u_int SOCKET;
 #define SOCKET_ERROR        -1
 #endif
 
-#ifdef WIN32
+#ifdef _WIN32
 #ifndef S_IRUSR
 #define S_IRUSR             0400
 #define S_IWUSR             0200
@@ -78,7 +93,7 @@ typedef u_int SOCKET;
 #define MSG_NOSIGNAL 0
 #endif
 
-#ifndef WIN32
+#ifndef _WIN32
 // PRIO_MAX is not defined on Solaris
 #ifndef PRIO_MAX
 #define PRIO_MAX 20
@@ -94,7 +109,7 @@ size_t strnlen( const char *start, size_t max_len);
 #endif // HAVE_DECL_STRNLEN
 
 bool static inline IsSelectableSocket(SOCKET s) {
-#ifdef WIN32
+#ifdef _WIN32
     return true;
 #else
     return (s < FD_SETSIZE);

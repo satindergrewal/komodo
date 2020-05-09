@@ -155,7 +155,7 @@ namespace tfm = tinyformat;
 #endif
 
 #ifdef __APPLE__
-// Workaround OSX linker warning: xcode uses different default symbol
+// Workaround macOS linker warning: Xcode uses different default symbol
 // visibilities for static libs vs executables (see issue #25)
 #   define TINYFORMAT_HIDDEN __attribute__((visibility("hidden")))
 #else
@@ -500,7 +500,7 @@ class FormatArg
         void format(std::ostream& out, const char* fmtBegin,
                     const char* fmtEnd, int ntrunc) const
         {
-/*<<<<<<< HEAD
+/*
             // It would be nice if we could do this from the destructor, but we
             // can't if TINYFORMAT_ERROR is used to throw an exception!
             m_fmt = printFormatStringLiteral(m_out, m_fmt);
@@ -584,7 +584,7 @@ inline const char* printFormatStringLiteral(std::ostream& out, const char* fmt)
 // Formatting options which can't be natively represented using the ostream
 // state are returned in spacePadPositive (for space padded positive numbers)
 // and ntrunc (for truncating conversions).  argIndex is incremented if
-// necessary to pull out variable width and precision .  The function returns a
+// necessary to pull out variable width and precision.  The function returns a
 // pointer to the character after the end of the current format spec.
 inline const char* streamStateFromFormat(std::ostream& out, bool& spacePadPositive,
                                          int& ntrunc, const char* fmtStart,

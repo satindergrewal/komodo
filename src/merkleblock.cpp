@@ -3,12 +3,27 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+/******************************************************************************
+ * Copyright © 2014-2019 The SuperNET Developers.                             *
+ *                                                                            *
+ * See the AUTHORS, DEVELOPER-AGREEMENT and LICENSE files at                  *
+ * the top-level directory of this distribution for the individual copyright  *
+ * holder information and the developer policies on copyright and licensing.  *
+ *                                                                            *
+ * Unless otherwise agreed in a custom licensing agreement, no part of the    *
+ * SuperNET software, including this file may be copied, modified, propagated *
+ * or distributed except according to the terms contained in the LICENSE file *
+ *                                                                            *
+ * Removal or modification of this copyright notice is prohibited.            *
+ *                                                                            *
+ ******************************************************************************/
+
 #include "merkleblock.h"
 
 #include "hash.h"
 #include "consensus/consensus.h"
 #include "utilstrencodings.h"
-
+#include "komodo_defs.h"
 using namespace std;
 
 CMerkleBlock::CMerkleBlock(const CBlock& block, CBloomFilter& filter)
@@ -62,12 +77,12 @@ CMerkleBlock::CMerkleBlock(const CBlock& block, const std::set<uint256>& txids)
 
 uint256 CPartialMerkleTree::CalcHash(int height, unsigned int pos, const std::vector<uint256> &vTxid) {
     if (height == 0) {
-        // hash at height 0 is the txids themself
+        // hash at height 0 is the txid itself
         return vTxid[pos];
     } else {
         // calculate left hash
         uint256 left = CalcHash(height-1, pos*2, vTxid), right;
-        // calculate right hash if not beyond the end of the array - copy left hash otherwise1
+        // calculate right hash if not beyond the end of the array - copy left hash otherwise
         if (pos*2+1 < CalcTreeWidth(height-1))
             right = CalcHash(height-1, pos*2+1, vTxid);
         else
@@ -153,7 +168,7 @@ uint256 CPartialMerkleTree::ExtractMatches(std::vector<uint256> &vMatch) {
     if (nTransactions == 0)
         return uint256();
     // check for excessively high numbers of transactions
-    if (nTransactions > MAX_BLOCK_SIZE / 60) // 60 is the lower bound for the size of a serialized CTransaction
+    if (nTransactions > MAX_BLOCK_SIZE(10000000) / 60) // 60 is the lower bound for the size of a serialized CTransaction
         return uint256();
     // there can never be more hashes provided than one for every txid
     if (vHash.size() > nTransactions)

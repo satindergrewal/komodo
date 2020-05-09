@@ -3,13 +3,30 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+/******************************************************************************
+ * Copyright © 2014-2019 The SuperNET Developers.                             *
+ *                                                                            *
+ * See the AUTHORS, DEVELOPER-AGREEMENT and LICENSE files at                  *
+ * the top-level directory of this distribution for the individual copyright  *
+ * holder information and the developer policies on copyright and licensing.  *
+ *                                                                            *
+ * Unless otherwise agreed in a custom licensing agreement, no part of the    *
+ * SuperNET software, including this file may be copied, modified, propagated *
+ * or distributed except according to the terms contained in the LICENSE file *
+ *                                                                            *
+ * Removal or modification of this copyright notice is prohibited.            *
+ *                                                                            *
+ ******************************************************************************/
+
 #include "sigcache.h"
 
 #include "pubkey.h"
 #include "random.h"
 #include "uint256.h"
 #include "util.h"
-
+#ifdef _WIN32
+#undef __cpuid
+#endif
 #include <boost/thread.hpp>
 #include <boost/tuple/tuple_comparison.hpp>
 
@@ -45,7 +62,7 @@ public:
     {
         // DoS prevention: limit cache size to less than 10MB
         // (~200 bytes per cache entry times 50,000 entries)
-        // Since there are a maximum of 20,000 signature operations per block
+        // Since there can be no more than 20,000 signature operations per block
         // 50,000 is a reasonable default.
         int64_t nMaxCacheSize = GetArg("-maxsigcachesize", 50000);
         if (nMaxCacheSize <= 0) return;

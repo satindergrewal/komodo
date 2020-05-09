@@ -3,11 +3,27 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+/******************************************************************************
+ * Copyright © 2014-2019 The SuperNET Developers.                             *
+ *                                                                            *
+ * See the AUTHORS, DEVELOPER-AGREEMENT and LICENSE files at                  *
+ * the top-level directory of this distribution for the individual copyright  *
+ * holder information and the developer policies on copyright and licensing.  *
+ *                                                                            *
+ * Unless otherwise agreed in a custom licensing agreement, no part of the    *
+ * SuperNET software, including this file may be copied, modified, propagated *
+ * or distributed except according to the terms contained in the LICENSE file *
+ *                                                                            *
+ * Removal or modification of this copyright notice is prohibited.            *
+ *                                                                            *
+ ******************************************************************************/
+
 #ifndef BITCOIN_SCRIPT_INTERPRETER_H
 #define BITCOIN_SCRIPT_INTERPRETER_H
 
 #include "script_error.h"
 #include "primitives/transaction.h"
+#include "script/cc.h"
 
 #include <vector>
 #include <stdint.h>
@@ -45,7 +61,8 @@ enum
     SCRIPT_VERIFY_STRICTENC = (1U << 1),
 
     // Passing a non-strict-DER signature to a checksig operation causes script failure (softfork safe, BIP62 rule 1)
-    SCRIPT_VERIFY_DERSIG    = (1U << 2),
+    // In Zcash this is required, and validation of non-strict-DER signatures is not implemented.
+    //SCRIPT_VERIFY_DERSIG    = (1U << 2),
 
     // Passing a non-strict-DER signature or one with S > order/2 to a checksig operation causes script failure
     // (softfork safe, BIP62 rule 5).
@@ -87,12 +104,39 @@ enum
     SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY = (1U << 9),
 };
 
-uint256 SignatureHash(const CScript &scriptCode, const CTransaction& txTo, unsigned int nIn, int nHashType);
+bool CheckSignatureEncoding(const std::vector<unsigned char> &vchSig, unsigned int flags, ScriptError* serror);
+
+struct PrecomputedTransactionData
+{
+    uint256 hashPrevouts, hashSequence, hashOutputs, hashJoinSplits, hashShieldedSpends, hashShieldedOutputs;
+
+    PrecomputedTransactionData(const CTransaction& tx);
+};
+
+enum SigVersion
+{
+    SIGVERSION_SPROUT = 0,
+    SIGVERSION_OVERWINTER = 1,
+    SIGVERSION_SAPLING = 2,
+};
+
+uint256 SignatureHash(
+    const CScript &scriptCode,
+    const CTransaction& txTo,
+    unsigned int nIn,
+    int nHashType,
+    const CAmount& amount,
+    uint32_t consensusBranchId,
+    const PrecomputedTransactionData* cache = NULL);
 
 class BaseSignatureChecker
 {
 public:
-    virtual bool CheckSig(const std::vector<unsigned char>& scriptSig, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode) const
+    virtual bool CheckSig(
+        const std::vector<unsigned char>& scriptSig,
+        const std::vector<unsigned char>& vchPubKey,
+        const CScript& scriptCode,
+        uint32_t consensusBranchId) const
     {
         return false;
     }
@@ -102,22 +146,39 @@ public:
          return false;
     }
 
+    virtual int CheckCryptoCondition(
+            const std::vector<unsigned char>& condBin,
+            const std::vector<unsigned char>& ffillBin,
+            const CScript& scriptCode,
+            uint32_t consensusBranchId) const
+    {
+        return false;
+    }
+
     virtual ~BaseSignatureChecker() {}
 };
 
 class TransactionSignatureChecker : public BaseSignatureChecker
 {
-private:
+protected:
     const CTransaction* txTo;
     unsigned int nIn;
+    const CAmount amount;
+    const PrecomputedTransactionData* txdata;
 
-protected:
     virtual bool VerifySignature(const std::vector<unsigned char>& vchSig, const CPubKey& vchPubKey, const uint256& sighash) const;
 
 public:
-    TransactionSignatureChecker(const CTransaction* txToIn, unsigned int nInIn) : txTo(txToIn), nIn(nInIn) {}
-    bool CheckSig(const std::vector<unsigned char>& scriptSig, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode) const;
+    TransactionSignatureChecker(const CTransaction* txToIn, unsigned int nInIn, const CAmount& amountIn) : txTo(txToIn), nIn(nInIn), amount(amountIn), txdata(NULL) {}
+    TransactionSignatureChecker(const CTransaction* txToIn, unsigned int nInIn, const CAmount& amountIn, const PrecomputedTransactionData& txdataIn) : txTo(txToIn), nIn(nInIn), amount(amountIn), txdata(&txdataIn) {}
+    bool CheckSig(const std::vector<unsigned char>& scriptSig, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode, uint32_t consensusBranchId) const;
     bool CheckLockTime(const CScriptNum& nLockTime) const;
+    int CheckCryptoCondition(
+        const std::vector<unsigned char>& condBin,
+        const std::vector<unsigned char>& ffillBin,
+        const CScript& scriptCode,
+        uint32_t consensusBranchId) const;
+    virtual int CheckEvalCondition(const CC *cond) const;
 };
 
 class MutableTransactionSignatureChecker : public TransactionSignatureChecker
@@ -126,10 +187,21 @@ private:
     const CTransaction txTo;
 
 public:
-    MutableTransactionSignatureChecker(const CMutableTransaction* txToIn, unsigned int nInIn) : TransactionSignatureChecker(&txTo, nInIn), txTo(*txToIn) {}
+    MutableTransactionSignatureChecker(const CMutableTransaction* txToIn, unsigned int nInIn, const CAmount& amount) : TransactionSignatureChecker(&txTo, nInIn, amount), txTo(*txToIn) {}
 };
 
-bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& script, unsigned int flags, const BaseSignatureChecker& checker, ScriptError* error = NULL);
-bool VerifyScript(const CScript& scriptSig, const CScript& scriptPubKey, unsigned int flags, const BaseSignatureChecker& checker, ScriptError* error = NULL);
-
+bool EvalScript(
+    std::vector<std::vector<unsigned char> >& stack,
+    const CScript& script,
+    unsigned int flags,
+    const BaseSignatureChecker& checker,
+    uint32_t consensusBranchId,
+    ScriptError* error = NULL);
+bool VerifyScript(
+    const CScript& scriptSig,
+    const CScript& scriptPubKey,
+    unsigned int flags,
+    const BaseSignatureChecker& checker,
+    uint32_t consensusBranchId,
+    ScriptError* serror = NULL);
 #endif // BITCOIN_SCRIPT_INTERPRETER_H

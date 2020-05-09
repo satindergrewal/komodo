@@ -3,9 +3,26 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+/******************************************************************************
+ * Copyright © 2014-2019 The SuperNET Developers.                             *
+ *                                                                            *
+ * See the AUTHORS, DEVELOPER-AGREEMENT and LICENSE files at                  *
+ * the top-level directory of this distribution for the individual copyright  *
+ * holder information and the developer policies on copyright and licensing.  *
+ *                                                                            *
+ * Unless otherwise agreed in a custom licensing agreement, no part of the    *
+ * SuperNET software, including this file may be copied, modified, propagated *
+ * or distributed except according to the terms contained in the LICENSE file *
+ *                                                                            *
+ * Removal or modification of this copyright notice is prohibited.            *
+ *                                                                            *
+ ******************************************************************************/
+
 #include "zcashconsensus.h"
 
+#include "consensus/upgrades.h"
 #include "primitives/transaction.h"
+#include "pubkey.h"
 #include "script/interpreter.h"
 #include "version.h"
 
@@ -22,7 +39,7 @@ public:
     m_remaining(txToLen)
     {}
 
-    TxInputStream& read(char* pch, size_t nSize)
+    void read(char* pch, size_t nSize)
     {
         if (nSize > m_remaining)
             throw std::ios_base::failure(std::string(__func__) + ": end of data");
@@ -36,16 +53,17 @@ public:
         memcpy(pch, m_data, nSize);
         m_remaining -= nSize;
         m_data += nSize;
-        return *this;
     }
 
     template<typename T>
     TxInputStream& operator>>(T& obj)
     {
-        ::Unserialize(*this, obj, m_type, m_version);
+        ::Unserialize(*this, obj);
         return *this;
     }
 
+    int GetVersion() const { return m_version; }
+    int GetType() const { return m_type; }
 private:
     const int m_type;
     const int m_version;
@@ -60,7 +78,13 @@ inline int set_error(zcashconsensus_error* ret, zcashconsensus_error serror)
     return 0;
 }
 
-} // anon namespace
+struct ECCryptoClosure
+{
+    ECCVerifyHandle handle;
+};
+
+ECCryptoClosure instance_of_eccryptoclosure;
+}
 
 int zcashconsensus_verify_script(const unsigned char *scriptPubKey, unsigned int scriptPubKeyLen,
                                     const unsigned char *txTo        , unsigned int txToLen,
@@ -72,13 +96,21 @@ int zcashconsensus_verify_script(const unsigned char *scriptPubKey, unsigned int
         stream >> tx;
         if (nIn >= tx.vin.size())
             return set_error(err, zcashconsensus_ERR_TX_INDEX);
-        if (tx.GetSerializeSize(SER_NETWORK, PROTOCOL_VERSION) != txToLen)
+        if (GetSerializeSize(tx, SER_NETWORK, PROTOCOL_VERSION) != txToLen)
             return set_error(err, zcashconsensus_ERR_TX_SIZE_MISMATCH);
 
          // Regardless of the verification result, the tx did not error.
          set_error(err, zcashconsensus_ERR_OK);
-
-        return VerifyScript(tx.vin[nIn].scriptSig, CScript(scriptPubKey, scriptPubKey + scriptPubKeyLen), flags, TransactionSignatureChecker(&tx, nIn), NULL);
+        PrecomputedTransactionData txdata(tx);
+        CAmount am(0);
+        uint32_t consensusBranchId = SPROUT_BRANCH_ID;
+        return VerifyScript(
+            tx.vin[nIn].scriptSig,
+            CScript(scriptPubKey, scriptPubKey + scriptPubKeyLen),
+            flags,
+            TransactionSignatureChecker(&tx, nIn, am, txdata),
+            consensusBranchId,
+            NULL);
     } catch (const std::exception&) {
         return set_error(err, zcashconsensus_ERR_TX_DESERIALIZE); // Error deserializing
     }

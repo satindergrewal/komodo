@@ -3,11 +3,27 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+/******************************************************************************
+ * Copyright © 2014-2019 The SuperNET Developers.                             *
+ *                                                                            *
+ * See the AUTHORS, DEVELOPER-AGREEMENT and LICENSE files at                  *
+ * the top-level directory of this distribution for the individual copyright  *
+ * holder information and the developer policies on copyright and licensing.  *
+ *                                                                            *
+ * Unless otherwise agreed in a custom licensing agreement, no part of the    *
+ * SuperNET software, including this file may be copied, modified, propagated *
+ * or distributed except according to the terms contained in the LICENSE file *
+ *                                                                            *
+ * Removal or modification of this copyright notice is prohibited.            *
+ *                                                                            *
+ ******************************************************************************/
+
 #ifndef BITCOIN_SYNC_H
 #define BITCOIN_SYNC_H
 
 #include "threadsafety.h"
 
+#undef __cpuid
 #include <boost/thread/condition_variable.hpp>
 #include <boost/thread/locks.hpp>
 #include <boost/thread/mutex.hpp>
@@ -101,7 +117,7 @@ void PrintLockContention(const char* pszName, const char* pszFile, int nLine);
 
 /** Wrapper around boost::unique_lock<Mutex> */
 template <typename Mutex>
-class CMutexLock
+class SCOPED_LOCKABLE CMutexLock
 {
 private:
     boost::unique_lock<Mutex> lock;
@@ -129,7 +145,7 @@ private:
     }
 
 public:
-    CMutexLock(Mutex& mutexIn, const char* pszName, const char* pszFile, int nLine, bool fTry = false) : lock(mutexIn, boost::defer_lock)
+    CMutexLock(Mutex& mutexIn, const char* pszName, const char* pszFile, int nLine, bool fTry = false) EXCLUSIVE_LOCK_FUNCTION(mutexIn) : lock(mutexIn, boost::defer_lock)
     {
         if (fTry)
             TryEnter(pszName, pszFile, nLine);
@@ -137,7 +153,7 @@ public:
             Enter(pszName, pszFile, nLine);
     }
 
-    CMutexLock(Mutex* pmutexIn, const char* pszName, const char* pszFile, int nLine, bool fTry = false)
+    CMutexLock(Mutex* pmutexIn, const char* pszName, const char* pszFile, int nLine, bool fTry = false) EXCLUSIVE_LOCK_FUNCTION(pmutexIn)
     {
         if (!pmutexIn) return;
 
@@ -148,7 +164,7 @@ public:
             Enter(pszName, pszFile, nLine);
     }
 
-    ~CMutexLock()
+    ~CMutexLock() UNLOCK_FUNCTION()
     {
         if (lock.owns_lock())
             LeaveCritical();

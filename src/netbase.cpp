@@ -3,6 +3,21 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+/******************************************************************************
+ * Copyright © 2014-2019 The SuperNET Developers.                             *
+ *                                                                            *
+ * See the AUTHORS, DEVELOPER-AGREEMENT and LICENSE files at                  *
+ * the top-level directory of this distribution for the individual copyright  *
+ * holder information and the developer policies on copyright and licensing.  *
+ *                                                                            *
+ * Unless otherwise agreed in a custom licensing agreement, no part of the    *
+ * SuperNET software, including this file may be copied, modified, propagated *
+ * or distributed except according to the terms contained in the LICENSE file *
+ *                                                                            *
+ * Removal or modification of this copyright notice is prohibited.            *
+ *                                                                            *
+ ******************************************************************************/
+
 #ifdef HAVE_CONFIG_H
 #include "config/bitcoin-config.h"
 #endif
@@ -26,7 +41,7 @@
 #include <netdb.h>
 #endif
 
-#ifndef WIN32
+#ifndef _WIN32
 #if HAVE_INET_PTON
 #include <arpa/inet.h>
 #endif
@@ -129,7 +144,7 @@ bool static LookupIntern(const char *pszName, std::vector<CNetAddr>& vIP, unsign
     aiHint.ai_socktype = SOCK_STREAM;
     aiHint.ai_protocol = IPPROTO_TCP;
     aiHint.ai_family = AF_UNSPEC;
-#ifdef WIN32
+#ifdef _WIN32
     aiHint.ai_flags = fAllowLookup ? 0 : AI_NUMERICHOST;
 #else
     aiHint.ai_flags = fAllowLookup ? AI_ADDRCONFIG : AI_NUMERICHOST;
@@ -146,7 +161,7 @@ bool static LookupIntern(const char *pszName, std::vector<CNetAddr>& vIP, unsign
         return false;
 
     do {
-        // Should set the timeout limit to a resonable value to avoid
+        // Should set the timeout limit to a reasonable value to avoid
         // generating unnecessary checking call during the polling loop,
         // while it can still response to stop request quick enough.
         // 2 seconds looks fine in our situation.
@@ -233,10 +248,7 @@ bool LookupNumeric(const char *pszName, CService& addr, int portDefault)
     return Lookup(pszName, addr, portDefault, false);
 }
 
-/**
- * Convert milliseconds to a struct timeval for select.
- */
-struct timeval static MillisToTimeval(int64_t nTimeout)
+struct timeval MillisToTimeval(int64_t nTimeout)
 {
     struct timeval timeout;
     timeout.tv_sec  = nTimeout / 1000;
@@ -255,7 +267,7 @@ struct timeval static MillisToTimeval(int64_t nTimeout)
  *
  * @note This function requires that hSocket is in non-blocking mode.
  */
-bool static InterruptibleRecv(char* data, size_t len, int timeout, SOCKET& hSocket)
+bool static InterruptibleRecv(uint8_t* data, size_t len, int timeout, SOCKET& hSocket)
 {
     int64_t curTime = GetTimeMillis();
     int64_t endTime = curTime + timeout;
@@ -263,7 +275,11 @@ bool static InterruptibleRecv(char* data, size_t len, int timeout, SOCKET& hSock
     // to break off in case of an interruption.
     const int64_t maxWait = 1000;
     while (len > 0 && curTime < endTime) {
+#ifdef _WIN32
+        ssize_t ret = recv(hSocket, (char*)data, len, 0); // Optimistically try the recv first
+#else
         ssize_t ret = recv(hSocket, data, len, 0); // Optimistically try the recv first
+#endif
         if (ret > 0) {
             len -= ret;
             data += ret;
@@ -323,7 +339,7 @@ static bool Socks5(const std::string& strDest, int port, const ProxyCredentials 
         CloseSocket(hSocket);
         return error("Error sending to proxy");
     }
-    char pchRet1[2];
+    uint8_t pchRet1[2];
     if (!InterruptibleRecv(pchRet1, 2, SOCKS5_RECV_TIMEOUT, hSocket)) {
         CloseSocket(hSocket);
         return error("Error reading proxy response");
@@ -348,7 +364,7 @@ static bool Socks5(const std::string& strDest, int port, const ProxyCredentials 
             return error("Error sending authentication to proxy");
         }
         LogPrint("proxy", "SOCKS5 sending proxy authentication %s:%s\n", auth->username, auth->password);
-        char pchRetA[2];
+        uint8_t pchRetA[2];
         if (!InterruptibleRecv(pchRetA, 2, SOCKS5_RECV_TIMEOUT, hSocket)) {
             CloseSocket(hSocket);
             return error("Error reading proxy authentication response");
@@ -377,7 +393,7 @@ static bool Socks5(const std::string& strDest, int port, const ProxyCredentials 
         CloseSocket(hSocket);
         return error("Error sending to proxy");
     }
-    char pchRet2[4];
+    uint8_t pchRet2[4];
     if (!InterruptibleRecv(pchRet2, 4, SOCKS5_RECV_TIMEOUT, hSocket)) {
         CloseSocket(hSocket);
         return error("Error reading proxy response");
@@ -405,7 +421,7 @@ static bool Socks5(const std::string& strDest, int port, const ProxyCredentials 
         CloseSocket(hSocket);
         return error("Error: malformed proxy response");
     }
-    char pchRet3[256];
+    uint8_t pchRet3[256];
     switch (pchRet2[3])
     {
         case 0x01: ret = InterruptibleRecv(pchRet3, 4, SOCKS5_RECV_TIMEOUT, hSocket); break;
@@ -417,7 +433,7 @@ static bool Socks5(const std::string& strDest, int port, const ProxyCredentials 
                 CloseSocket(hSocket);
                 return error("Error reading from proxy");
             }
-            int nRecv = pchRet3[0];
+            size_t nRecv = pchRet3[0];
             ret = InterruptibleRecv(pchRet3, nRecv, SOCKS5_RECV_TIMEOUT, hSocket);
             break;
         }
@@ -457,7 +473,7 @@ bool static ConnectSocketDirectly(const CService &addrConnect, SOCKET& hSocketRe
 #endif
 
     //Disable Nagle's algorithm
-#ifdef WIN32
+#ifdef _WIN32
     setsockopt(hSocket, IPPROTO_TCP, TCP_NODELAY, (const char*)&set, sizeof(int));
 #else
     setsockopt(hSocket, IPPROTO_TCP, TCP_NODELAY, (void*)&set, sizeof(int));
@@ -491,7 +507,7 @@ bool static ConnectSocketDirectly(const CService &addrConnect, SOCKET& hSocketRe
                 return false;
             }
             socklen_t nRetSize = sizeof(nRet);
-#ifdef WIN32
+#ifdef _WIN32
             if (getsockopt(hSocket, SOL_SOCKET, SO_ERROR, (char*)(&nRet), &nRetSize) == SOCKET_ERROR)
 #else
             if (getsockopt(hSocket, SOL_SOCKET, SO_ERROR, &nRet, &nRetSize) == SOCKET_ERROR)
@@ -508,13 +524,14 @@ bool static ConnectSocketDirectly(const CService &addrConnect, SOCKET& hSocketRe
                 return false;
             }
         }
-#ifdef WIN32
+#ifdef _WIN32
         else if (WSAGetLastError() != WSAEISCONN)
 #else
         else
 #endif
         {
-            LogPrintf("connect() to %s failed: %s\n", addrConnect.ToString(), NetworkErrorString(WSAGetLastError()));
+            if ( NetworkErrorString(WSAGetLastError()) != "Network is unreachable (101)")
+                LogPrintf("connect() to %s failed: %s\n", addrConnect.ToString(), NetworkErrorString(WSAGetLastError()));
             CloseSocket(hSocket);
             return false;
         }
@@ -1346,7 +1363,12 @@ bool operator!=(const CSubNet& a, const CSubNet& b)
     return !(a==b);
 }
 
-#ifdef WIN32
+bool operator<(const CSubNet& a, const CSubNet& b)
+{
+    return (a.network < b.network || (a.network == b.network && memcmp(a.netmask, b.netmask, 16) < 0));
+}
+
+#ifdef _WIN32
 std::string NetworkErrorString(int err)
 {
     char buf[256];
@@ -1384,7 +1406,7 @@ bool CloseSocket(SOCKET& hSocket)
 {
     if (hSocket == INVALID_SOCKET)
         return false;
-#ifdef WIN32
+#ifdef _WIN32
     int ret = closesocket(hSocket);
 #else
     int ret = close(hSocket);
@@ -1396,7 +1418,7 @@ bool CloseSocket(SOCKET& hSocket)
 bool SetSocketNonBlocking(SOCKET& hSocket, bool fNonBlocking)
 {
     if (fNonBlocking) {
-#ifdef WIN32
+#ifdef _WIN32
         u_long nOne = 1;
         if (ioctlsocket(hSocket, FIONBIO, &nOne) == SOCKET_ERROR) {
 #else
@@ -1407,7 +1429,7 @@ bool SetSocketNonBlocking(SOCKET& hSocket, bool fNonBlocking)
             return false;
         }
     } else {
-#ifdef WIN32
+#ifdef _WIN32
         u_long nZero = 0;
         if (ioctlsocket(hSocket, FIONBIO, &nZero) == SOCKET_ERROR) {
 #else

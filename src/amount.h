@@ -3,6 +3,21 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+/******************************************************************************
+ * Copyright © 2014-2019 The SuperNET Developers.                             *
+ *                                                                            *
+ * See the AUTHORS, DEVELOPER-AGREEMENT and LICENSE files at                  *
+ * the top-level directory of this distribution for the individual copyright  *
+ * holder information and the developer policies on copyright and licensing.  *
+ *                                                                            *
+ * Unless otherwise agreed in a custom licensing agreement, no part of the    *
+ * SuperNET software, including this file may be copied, modified, propagated *
+ * or distributed except according to the terms contained in the LICENSE file *
+ *                                                                            *
+ * Removal or modification of this copyright notice is prohibited.            *
+ *                                                                            *
+ ******************************************************************************/
+
 #ifndef BITCOIN_AMOUNT_H
 #define BITCOIN_AMOUNT_H
 
@@ -16,8 +31,20 @@ typedef int64_t CAmount;
 static const CAmount COIN = 100000000;
 static const CAmount CENT = 1000000;
 
-/** No amount larger than this (in satoshi) is valid */
-static const CAmount MAX_MONEY = 200000000 * COIN;
+extern const std::string CURRENCY_UNIT;
+
+/** No amount larger than this (in satoshi) is valid.
+ *
+ * Note that this constant is *not* the total money supply, which in Bitcoin
+ * currently happens to be less than 21,000,000 BTC for various reasons, but
+ * rather a sanity check. As this sanity check is used by consensus-critical
+ * validation code, the exact value of the MAX_MONEY constant is consensus
+ * critical; in unusual circumstances like a(nother) overflow bug that allowed
+ * for the creation of coins out of thin air modification could lead to a fork.
+ * */
+//static const CAmount MAX_MONEY = 21000000 * COIN;
+extern int64_t MAX_MONEY;
+
 inline bool MoneyRange(const CAmount& nValue) { return (nValue >= 0 && nValue <= MAX_MONEY); }
 
 /** Type-safe wrapper class to for fee rates
@@ -46,7 +73,7 @@ public:
     ADD_SERIALIZE_METHODS;
 
     template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action, int nType, int nVersion) {
+    inline void SerializationOp(Stream& s, Operation ser_action) {
         READWRITE(nSatoshisPerK);
     }
 };

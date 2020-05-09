@@ -2,9 +2,25 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+/******************************************************************************
+ * Copyright © 2014-2019 The SuperNET Developers.                             *
+ *                                                                            *
+ * See the AUTHORS, DEVELOPER-AGREEMENT and LICENSE files at                  *
+ * the top-level directory of this distribution for the individual copyright  *
+ * holder information and the developer policies on copyright and licensing.  *
+ *                                                                            *
+ * Unless otherwise agreed in a custom licensing agreement, no part of the    *
+ * SuperNET software, including this file may be copied, modified, propagated *
+ * or distributed except according to the terms contained in the LICENSE file *
+ *                                                                            *
+ * Removal or modification of this copyright notice is prohibited.            *
+ *                                                                            *
+ ******************************************************************************/
+
 #include "clientversion.h"
 
 #include "tinyformat.h"
+#include "util.h"
 
 #include <string>
 
@@ -19,7 +35,7 @@
  * for both bitcoind and bitcoin-core, to make it harder for attackers to
  * target servers or GUI users specifically.
  */
-const std::string CLIENT_NAME("MagicBean");
+const std::string CLIENT_NAME = GetArg("-clientname", "MagicBean");
 
 /**
  * Client version number
@@ -48,10 +64,11 @@ const std::string CLIENT_NAME("MagicBean");
 #include "build.h"
 #endif
 
-//! git will put "#define GIT_ARCHIVE 1" on the next line inside archives. $Format:%n#define GIT_ARCHIVE 1$
+//! git will put "#define GIT_ARCHIVE 1" on the next line inside archives. 
+#define GIT_ARCHIVE 1
 #ifdef GIT_ARCHIVE
-#define GIT_COMMIT_ID "$Format:%h$"
-#define GIT_COMMIT_DATE "$Format:%cD$"
+#define GIT_COMMIT_ID "a86845f3dc"
+#define GIT_COMMIT_DATE "Wed, 21 Feb 2018 16:15:11 +0200"
 #endif
 
 #define RENDER_BETA_STRING(num) "-beta" DO_STRINGIZE(num)
@@ -100,7 +117,7 @@ const std::string CLIENT_NAME("MagicBean");
 const std::string CLIENT_BUILD(BUILD_DESC CLIENT_VERSION_SUFFIX);
 const std::string CLIENT_DATE(BUILD_DATE);
 
-static std::string FormatVersion(int nVersion)
+std::string FormatVersion(int nVersion)
 {
     if (nVersion % 100 < 25)
         return strprintf("%d.%d.%d-beta%d", nVersion / 1000000, (nVersion / 10000) % 100, (nVersion / 100) % 100, (nVersion % 100)+1);

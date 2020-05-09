@@ -3,22 +3,40 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+/******************************************************************************
+ * Copyright © 2014-2019 The SuperNET Developers.                             *
+ *                                                                            *
+ * See the AUTHORS, DEVELOPER-AGREEMENT and LICENSE files at                  *
+ * the top-level directory of this distribution for the individual copyright  *
+ * holder information and the developer policies on copyright and licensing.  *
+ *                                                                            *
+ * Unless otherwise agreed in a custom licensing agreement, no part of the    *
+ * SuperNET software, including this file may be copied, modified, propagated *
+ * or distributed except according to the terms contained in the LICENSE file *
+ *                                                                            *
+ * Removal or modification of this copyright notice is prohibited.            *
+ *                                                                            *
+ ******************************************************************************/
+
 #include "script.h"
 
 #include "tinyformat.h"
 #include "utilstrencodings.h"
-
-namespace {
-inline std::string ValueString(const std::vector<unsigned char>& vch)
-{
-    if (vch.size() <= 4)
-        return strprintf("%d", CScriptNum(vch, false).getint());
-    else
-        return HexStr(vch);
-}
-} // anon namespace
+#include "script/cc.h"
+#include "cc/eval.h"
+#include "cryptoconditions/include/cryptoconditions.h"
 
 using namespace std;
+
+namespace {
+    inline std::string ValueString(const std::vector<unsigned char>& vch)
+    {
+        if (vch.size() <= 4)
+            return strprintf("%d", CScriptNum(vch, false).getint());
+        else
+            return HexStr(vch);
+    }
+} // anon namespace
 
 const char* GetOpName(opcodetype opcode)
 {
@@ -138,8 +156,11 @@ const char* GetOpName(opcodetype opcode)
     case OP_CHECKSIGVERIFY         : return "OP_CHECKSIGVERIFY";
     case OP_CHECKMULTISIG          : return "OP_CHECKMULTISIG";
     case OP_CHECKMULTISIGVERIFY    : return "OP_CHECKMULTISIGVERIFY";
+    case OP_CHECKCRYPTOCONDITION   : return "OP_CHECKCRYPTOCONDITION";
+    case OP_CHECKCRYPTOCONDITIONVERIFY
+                                   : return "OP_CHECKCRYPTOCONDITIONVERIFY";
 
-    // expanson
+    // expansion
     case OP_NOP1                   : return "OP_NOP1";
     case OP_NOP2                   : return "OP_NOP2";
     case OP_NOP3                   : return "OP_NOP3";
@@ -211,13 +232,191 @@ unsigned int CScript::GetSigOpCount(const CScript& scriptSig) const
     return subscript.GetSigOpCount(true);
 }
 
+bool CScript::IsPayToPublicKeyHash() const
+{
+    // Extra-fast test for pay-to-pubkey-hash CScripts:
+    return (this->size() == 25 &&
+	    (*this)[0] == OP_DUP &&
+	    (*this)[1] == OP_HASH160 &&
+	    (*this)[2] == 0x14 &&
+	    (*this)[23] == OP_EQUALVERIFY &&
+	    (*this)[24] == OP_CHECKSIG);
+}
+
+bool CScript::IsPayToPublicKey() const
+{
+    // Extra-fast test for pay-to-pubkey CScripts:
+    return (this->size() == 35 &&
+            (*this)[0] == 33 &&
+            (*this)[34] == OP_CHECKSIG);
+}
+
 bool CScript::IsPayToScriptHash() const
 {
     // Extra-fast test for pay-to-script-hash CScripts:
     return (this->size() == 23 &&
-            this->at(0) == OP_HASH160 &&
-            this->at(1) == 0x14 &&
-            this->at(22) == OP_EQUAL);
+            (*this)[0] == OP_HASH160 &&
+            (*this)[1] == 0x14 &&
+            (*this)[22] == OP_EQUAL);
+}
+
+// this returns true if either there is nothing left and pc points at the end, or 
+// all instructions from the pc to the end of the script are balanced pushes and pops
+// if there is data, it also returns all the values as byte vectors in a list of vectors
+bool CScript::GetBalancedData(const_iterator& pc, std::vector<std::vector<unsigned char>>& vSolutions) const
+{
+    int netPushes = 0;
+    vSolutions.clear();
+
+    while (pc < end())
+    {
+        vector<unsigned char> data;
+        opcodetype opcode;
+        if (this->GetOp(pc, opcode, data))
+        {
+            if (opcode == OP_DROP)
+            {
+                // this should never pop what it hasn't pushed (like a success code)
+                if (--netPushes < 0)
+                    return false;
+            } 
+            else 
+            {
+                // push or fail
+                netPushes++;
+                if (opcode == OP_0)
+                {
+                    data.resize(1);
+                    data[0] = 0;
+                    vSolutions.push_back(data);
+                }
+                else if (opcode >= OP_1 && opcode <= OP_16)
+                {
+                    data.resize(1);
+                    data[0] = (opcode - OP_1) + 1;
+                    vSolutions.push_back(data);
+                }
+                else if (opcode > 0 && opcode <= OP_PUSHDATA4 && data.size() > 0)
+                {
+                    vSolutions.push_back(data);
+                }
+                else
+                    return false;
+            }
+        }
+        else
+            return false;
+    }
+    return netPushes == 0;
+}
+
+// this returns true if either there is nothing left and pc points at the end
+// if there is data, it also returns all the values as byte vectors in a list of vectors
+bool CScript::GetPushedData(CScript::const_iterator pc, std::vector<std::vector<unsigned char>>& vData) const
+{
+    vector<unsigned char> data;
+    opcodetype opcode;
+    std::vector<unsigned char> vch1 = std::vector<unsigned char>(1);
+
+    vData.clear();
+
+    while (pc < end())
+    {
+        if (GetOp(pc, opcode, data))
+        {
+            if (opcode == OP_0)
+            {
+                vch1[0] = 0;
+                vData.push_back(vch1);
+            }
+            else if (opcode >= OP_1 && opcode <= OP_16)
+            {
+                vch1[0] = (opcode - OP_1) + 1;
+                vData.push_back(vch1);
+            }
+            else if (opcode > 0 && opcode <= OP_PUSHDATA4 && data.size() > 0)
+            {
+                vData.push_back(data);
+            }
+            else
+                return false;
+        }
+    }
+    return vData.size() != 0;
+}
+
+// this returns true if either there is nothing left and pc points at the end
+// if there is data, it also returns all the values as byte vectors in a list of vectors
+bool CScript::GetOpretData(std::vector<std::vector<unsigned char>>& vData) const
+{
+    vector<unsigned char> data;
+    opcodetype opcode;
+    CScript::const_iterator pc = this->begin();
+
+    if (GetOp(pc, opcode, data) && opcode == OP_RETURN)
+    {
+        return GetPushedData(pc, vData);
+    }
+    else return false;
+}
+
+bool CScript::IsPayToCryptoCondition(CScript *pCCSubScript, std::vector<std::vector<unsigned char>>& vParams) const
+{
+    const_iterator pc = begin();
+    vector<unsigned char> data;
+    opcodetype opcode;
+    if (this->GetOp(pc, opcode, data))
+        // Sha256 conditions are <76 bytes
+        if (opcode > OP_0 && opcode < OP_PUSHDATA1)
+            if (this->GetOp(pc, opcode, data))
+                if (opcode == OP_CHECKCRYPTOCONDITION)
+                {
+                    const_iterator pcCCEnd = pc;
+                    if (GetBalancedData(pc, vParams))
+                    {
+                        if (pCCSubScript)
+                            *pCCSubScript = CScript(begin(),pcCCEnd);
+                        return true;
+                    }
+                }
+    return false;
+}
+
+bool CScript::IsPayToCryptoCondition(CScript *pCCSubScript) const
+{
+    std::vector<std::vector<unsigned char>> vParams;
+    return IsPayToCryptoCondition(pCCSubScript, vParams);
+}
+
+bool CScript::IsPayToCryptoCondition() const
+{
+    return IsPayToCryptoCondition(NULL);
+}
+
+bool CScript::MayAcceptCryptoCondition() const
+{
+    // Get the type mask of the condition
+    const_iterator pc = this->begin();
+    vector<unsigned char> data;
+    opcodetype opcode;
+    if (!this->GetOp(pc, opcode, data)) return false;
+    if (!(opcode > OP_0 && opcode < OP_PUSHDATA1)) return false;
+    CC *cond = cc_readConditionBinary(data.data(), data.size());
+    if (!cond) return false;
+    bool out = IsSupportedCryptoCondition(cond);
+    cc_free(cond);
+    return out;
+}
+
+bool CScript::IsCoinImport() const
+{
+    const_iterator pc = this->begin();
+    vector<unsigned char> data;
+    opcodetype opcode;
+    if (this->GetOp(pc, opcode, data))
+        if (opcode > OP_0 && opcode <= OP_PUSHDATA4)
+            return data.begin()[0] == EVAL_IMPORTCOIN;
+    return false;
 }
 
 bool CScript::IsPushOnly() const
@@ -236,6 +435,37 @@ bool CScript::IsPushOnly() const
             return false;
     }
     return true;
+}
+
+// if the front of the script has check lock time verify. this is a fairly simple check.
+// accepts NULL as parameter if unlockTime is not needed.
+bool CScript::IsCheckLockTimeVerify(int64_t *unlockTime) const
+{
+    opcodetype op;
+    std::vector<unsigned char> unlockTimeParam = std::vector<unsigned char>();
+    CScript::const_iterator it = this->begin();
+
+    if (this->GetOp2(it, op, &unlockTimeParam))
+    {
+        if (unlockTimeParam.size() >= 0 && unlockTimeParam.size() < 6 &&
+            (*this)[unlockTimeParam.size() + 1] == OP_CHECKLOCKTIMEVERIFY)
+        {
+            int i = unlockTimeParam.size() - 1;
+            for (*unlockTime = 0; i >= 0; i--)
+            {
+                *unlockTime <<= 8;
+                *unlockTime |= *((unsigned char *)unlockTimeParam.data() + i);
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
+bool CScript::IsCheckLockTimeVerify() const
+{
+    int64_t ult;
+    return this->IsCheckLockTimeVerify(&ult);
 }
 
 std::string CScript::ToString() const

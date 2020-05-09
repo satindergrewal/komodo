@@ -3,6 +3,21 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+/******************************************************************************
+ * Copyright © 2014-2019 The SuperNET Developers.                             *
+ *                                                                            *
+ * See the AUTHORS, DEVELOPER-AGREEMENT and LICENSE files at                  *
+ * the top-level directory of this distribution for the individual copyright  *
+ * holder information and the developer policies on copyright and licensing.  *
+ *                                                                            *
+ * Unless otherwise agreed in a custom licensing agreement, no part of the    *
+ * SuperNET software, including this file may be copied, modified, propagated *
+ * or distributed except according to the terms contained in the LICENSE file *
+ *                                                                            *
+ * Removal or modification of this copyright notice is prohibited.            *
+ *                                                                            *
+ ******************************************************************************/
+
 #include "alert.h"
 
 #include "clientversion.h"
@@ -50,7 +65,7 @@ std::string CUnsignedAlert::ToString() const
     BOOST_FOREACH(int n, setCancel)
         strSetCancel += strprintf("%d ", n);
     std::string strSetSubVer;
-    BOOST_FOREACH(std::string str, setSubVer)
+    BOOST_FOREACH(const std::string& str, setSubVer)
         strSetSubVer += "\"" + str + "\" ";
     return strprintf(
         "CAlert(\n"
@@ -112,7 +127,7 @@ bool CAlert::Cancels(const CAlert& alert) const
     return (alert.nID <= nCancel || setCancel.count(alert.nID));
 }
 
-bool CAlert::AppliesTo(int nVersion, std::string strSubVerIn) const
+bool CAlert::AppliesTo(int nVersion, const std::string& strSubVerIn) const
 {
     // TODO: rework for client-version-embedded-in-strSubVer ?
     return (IsInEffect() &&

@@ -2,6 +2,21 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+/******************************************************************************
+ * Copyright © 2014-2019 The SuperNET Developers.                             *
+ *                                                                            *
+ * See the AUTHORS, DEVELOPER-AGREEMENT and LICENSE files at                  *
+ * the top-level directory of this distribution for the individual copyright  *
+ * holder information and the developer policies on copyright and licensing.  *
+ *                                                                            *
+ * Unless otherwise agreed in a custom licensing agreement, no part of the    *
+ * SuperNET software, including this file may be copied, modified, propagated *
+ * or distributed except according to the terms contained in the LICENSE file *
+ *                                                                            *
+ * Removal or modification of this copyright notice is prohibited.            *
+ *                                                                            *
+ ******************************************************************************/
+
 #include "scheduler.h"
 
 #include "reverselock.h"
@@ -16,16 +31,20 @@ CScheduler::CScheduler() : nThreadsServicingQueue(0), stopRequested(false), stop
 
 CScheduler::~CScheduler()
 {
+    /*int32_t i;
+    if ( nThreadsServicingQueue != 0 )
+    {
+        for (i=0; i<10; i++)
+        {
+            sleep(1);
+            fprintf(stderr,"CScheduler nThreadsServicingQueue.%d\n",(int32_t)nThreadsServicingQueue);
+            if ( nThreadsServicingQueue == 0 )
+                break;
+        }
+    }*/
     assert(nThreadsServicingQueue == 0);
 }
 
-
-#if BOOST_VERSION < 105000
-static boost::system_time toPosixTime(const boost::chrono::system_clock::time_point& t)
-{
-    return boost::posix_time::from_time_t(boost::chrono::system_clock::to_time_t(t));
-}
-#endif
 
 void CScheduler::serviceQueue()
 {
@@ -45,20 +64,13 @@ void CScheduler::serviceQueue()
             // Wait until either there is a new task, or until
             // the time of the first item on the queue:
 
-// wait_until needs boost 1.50 or later; older versions have timed_wait:
-#if BOOST_VERSION < 105000
-            while (!shouldStop() && !taskQueue.empty() &&
-                   newTaskScheduled.timed_wait(lock, toPosixTime(taskQueue.begin()->first))) {
-                // Keep waiting until timeout
-            }
-#else
             // Some boost versions have a conflicting overload of wait_until that returns void.
             // Explicitly use a template here to avoid hitting that overload.
             while (!shouldStop() && !taskQueue.empty() &&
                    newTaskScheduled.wait_until<>(lock, taskQueue.begin()->first) != boost::cv_status::timeout) {
                 // Keep waiting until timeout
             }
-#endif
+
             // If there are multiple threads, the queue can empty while we're waiting (another
             // thread may service the task we were waiting on).
             if (shouldStop() || taskQueue.empty())
