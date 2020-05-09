@@ -24,7 +24,9 @@ Project maintainers have the right and responsibility to remove, edit, or
 reject comments, commits, code, wiki edits, issues, and other contributions
 that are not aligned to this Code of Conduct, or to ban temporarily or
 permanently any contributor for other behaviors that they deem inappropriate,
-threatening, offensive, or harmful.
+threatening, offensive, or harmful. Note that contributors may be volunteers
+who do not represent Zcash Company. They are free to express their own
+opinions so long as they adhere to these guidelines.
 
 By adopting this Code of Conduct, project maintainers commit themselves to
 fairly and consistently applying these principles to every aspect of managing
@@ -41,19 +43,19 @@ is deemed necessary and appropriate to the circumstances. Maintainers are
 obligated to maintain confidentiality with regard to the reporter of an
 incident.
 
-You may send reports to [our Conduct email](mailto:conduct@z.cash).
+You may send reports to [our Conduct email](mailto:developer@komodoplatform.com).
 
 If you wish to contact specific maintainers directly, the following have made
 themselves available for conduct issues:
 
-- Daira Hopwood (daira at z.cash)
-- Sean Bowe (sean at z.cash)
-
+- Benny Fairbank (benny at komodoplatform.com)
+- Support Team (support at komodoplatform.com)
+- ca333 (ca333 at komodoplatform.com)
 
 This Code of Conduct is adapted from the [Contributor Covenant][homepage],
 version 1.3.0, available at
-[http://contributor-covenant.org/version/1/3/0/][version]
+[https://www.contributor-covenant.org/version/1/3/0/][version]
 
-[homepage]: http://contributor-covenant.org
-[version]: http://contributor-covenant.org/version/1/3/0/
+[homepage]: https://www.contributor-covenant.org
+[version]: https://www.contributor-covenant.org/version/1/3/0/
 

@@ -1,22 +1,17 @@
 *.tar.gz
 *.deb
-*.exe
 src/bitcoin
 src/zcashd
 src/zcash-cli
 src/zcash-gtest
 src/zcash-tx
 src/test/test_bitcoin
-src/qt/test/test_bitcoin-qt
-
-# Zcash utilities
-src/zcash/GenerateParams
 
 *zcashTest.pk
 *zcashTest.vk
 
 # autoreconf
-Makefile.in
+#Makefile.in
 aclocal.m4
 autom4te.cache/
 build-aux/config.guess
@@ -34,24 +29,20 @@ build-aux/compile
 build-aux/test-driver
 config.log
 config.status
-configure
+#configure
 libtool
 src/config/bitcoin-config.h
 src/config/bitcoin-config.h.in
 src/config/stamp-h1
 share/setup.nsi
-share/qt/Info.plist
 
+cache/
+venv-mnf/
 src/univalue/gen
-
-src/qt/*.moc
-src/qt/moc_*.cpp
-src/qt/forms/ui_*.h
-
-src/qt/test/moc*.cpp
 
 .deps
 .dirstamp
+.idea
 .libs
 .*.swp
 *.*~*
@@ -78,22 +69,15 @@ src/qt/test/moc*.cpp
 *.lo
 *.la
 
-# Compilation and Qt preprocessor part
-*.qm
+# Compilation
 Makefile
-bitcoin-qt
-Bitcoin-Qt.app
 
 # Unit-tests
 Makefile.test
-bitcoin-qt_test
 src/test/buildenv.py
 
 # Resources cpp
 qrc_*.cpp
-
-# Qt creator
-*.pro.user
 
 # Mac specific
 .DS_Store
@@ -124,3 +108,51 @@ qa/pull-tester/test.*/*
 libzcashconsensus.pc
 
 src/fiat/-usd
+contrib/debian/files
+contrib/debian/substvars
+
+src/rpcmisc~.cpp
+src/komodo-cli
+src/komodod
+src/komodo-tx
+src/komodo-test
+src/wallet-utility
+src/komodo-cli.exe
+src/komodod.exe
+src/komodo-tx.exe
+
+#output during builds, symbol tables?
+*.dSYM
+
+
+src/cryptoconditions/compile
+
+src/cc/rogue/rogue
+
+src/cc/rogue/rogue.so
+
+src/cc/rogue/test.zip
+src/cc/dapps/a.out
+src/checkfile
+
+src/foo.zip
+
+src/log
+
+src/rogue.530623577502174316.0
+
+src/rogue.530623577502174316.pack
+
+src/rogue.530623577502174316.player
+
+
+src/cc/rogue/config.h
+
+src/ROGUE.conf
+
+src/rogue.scr
+
+src/cc/rogue/confdefs.h
+src/cc/rogue/x64
+
+src/cc/dapps/a.out
