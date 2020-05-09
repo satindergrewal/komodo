@@ -1,21 +1,18 @@
-Source: zcash
+Source: komodo
 Section: utils
 Priority: optional
-Maintainer: Zcash Company <team@z.cash>
-Homepage: https://z.cash
-Build-Depends: autoconf, automake, bsdmainutils, build-essential
- git, g++-multilib, libc6-dev, libtool
- m4, ncurses-dev, pkg-config, python
+Maintainer: Komodo Platform <support@komodoplatform.com>
+Homepage: https://komodoplatform.com/
+Build-Depends: autoconf, automake, bsdmainutils, build-essential,
+ git, g++-multilib, libc6-dev, libtool,
+ m4, ncurses-dev, pkg-config, python,
  unzip, wget, zlib1g-dev
-Vcs-Git: https://github.com/zcash/zcash.git
-Vcs-Browser: https://github.com/zcash/zcash
-Package: zcash
-Version: 1.0.3
+Vcs-Git: https://github.com/jl777/komodo
+Vcs-Browser: https://github.com/jl777/komodo
+
+Package: komodo
 Architecture: amd64
-Depends: libgomp1
-Description: An implementation of the "Zerocash" protocol.
- Based on Bitcoin's code, it intends to offer a far higher standard
- of privacy and anonymity through a sophisticiated zero-knowledge
- proving scheme which preserves confidentiality of transaction metadata.
- This package provides the daemon, zcashd, and the CLI tool,
- zcash-cli, to interact with the daemon.
+Depends: ${shlibs:Depends}
+Description: Komodo (KMD) full node. The future is multi-chain.
+ This package provides the daemon, komodod, and the CLI tool,
+ komodo-cli, to interact with the daemon.
