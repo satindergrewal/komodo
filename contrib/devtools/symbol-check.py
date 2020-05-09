@@ -1,4 +1,4 @@
-#!/usr/bin/python2
+#!/usr/bin/env python
 # Copyright (c) 2014 Wladimir J. van der Laan
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
@@ -53,21 +53,17 @@ READELF_CMD = os.getenv('READELF', '/usr/bin/readelf')
 CPPFILT_CMD = os.getenv('CPPFILT', '/usr/bin/c++filt')
 # Allowed NEEDED libraries
 ALLOWED_LIBRARIES = {
-# bitcoind and bitcoin-qt
+# zcashd
 'libgcc_s.so.1', # GCC base support
 'libc.so.6', # C library
+'libstdc++.so.6', # C++ standard library
 'libpthread.so.0', # threading
 'libanl.so.1', # DNS resolve
 'libm.so.6', # math library
 'librt.so.1', # real-time (clock)
+'libgomp.so.1', # OpenMP support library
 'ld-linux-x86-64.so.2', # 64-bit dynamic linker
 'ld-linux.so.2', # 32-bit dynamic linker
-# bitcoin-qt only
-'libX11-xcb.so.1', # part of X11
-'libX11.so.6', # part of X11
-'libxcb.so.1', # part of X11
-'libfontconfig.so.1', # font support
-'libfreetype.so.6', # font parsing
 'libdl.so.2' # programming interface to dynamic linker
 }
 

@@ -1,4 +1,4 @@
-#!/usr/bin/python2
+#!/usr/bin/env python
 '''
 Perform basic ELF security checks on a series of executables.
 Exit status will be 0 if successful, and the program will be silent.
@@ -6,12 +6,14 @@ Otherwise the exit status will be 1 and it will log which executables failed whi
 Needs `readelf` (for ELF) and `objdump` (for PE).
 '''
 from __future__ import division,print_function,unicode_literals
+import struct
 import subprocess
 import sys
 import os
 
 READELF_CMD = os.getenv('READELF', '/usr/bin/readelf')
 OBJDUMP_CMD = os.getenv('OBJDUMP', '/usr/bin/objdump')
+NONFATAL = {'HIGH_ENTROPY_VA'} # checks which are non-fatal for now but only generate a warning
 
 def check_ELF_PIE(executable):
     '''
@@ -94,7 +96,7 @@ def check_ELF_RELRO(executable):
         raise IOError('Error opening file')
     for line in stdout.split(b'\n'):
         tokens = line.split()
-        if len(tokens)>1 and tokens[1] == b'(BIND_NOW)' or (len(tokens)>2 and tokens[1] == b'(FLAGS)' and b'BIND_NOW' in tokens[2]):
+        if len(tokens)>1 and tokens[1] == b'(BIND_NOW)' or (len(tokens)>2 and tokens[1] == b'(FLAGS)' and b'BIND_NOW' in tokens[2:]):
             have_bindnow = True
     return have_gnu_relro and have_bindnow
 
@@ -114,26 +116,50 @@ def check_ELF_Canary(executable):
 
 def get_PE_dll_characteristics(executable):
     '''
-    Get PE DllCharacteristics bits
+    Get PE DllCharacteristics bits.
+    Returns a tuple (arch,bits) where arch is 'i386:x86-64' or 'i386'
+    and bits is the DllCharacteristics value.
     '''
     p = subprocess.Popen([OBJDUMP_CMD, '-x',  executable], stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE)
     (stdout, stderr) = p.communicate()
     if p.returncode:
         raise IOError('Error opening file')
+    arch = ''
+    bits = 0
     for line in stdout.split('\n'):
         tokens = line.split()
+        if len(tokens)>=2 and tokens[0] == 'architecture:':
+            arch = tokens[1].rstrip(',')
         if len(tokens)>=2 and tokens[0] == 'DllCharacteristics':
-            return int(tokens[1],16)
-    return 0
+            bits = int(tokens[1],16)
+    return (arch,bits)
 
+IMAGE_DLL_CHARACTERISTICS_HIGH_ENTROPY_VA = 0x0020
+IMAGE_DLL_CHARACTERISTICS_DYNAMIC_BASE    = 0x0040
+IMAGE_DLL_CHARACTERISTICS_NX_COMPAT       = 0x0100
 
-def check_PE_PIE(executable):
+def check_PE_DYNAMIC_BASE(executable):
     '''PIE: DllCharacteristics bit 0x40 signifies dynamicbase (ASLR)'''
-    return bool(get_PE_dll_characteristics(executable) & 0x40)
+    (arch,bits) = get_PE_dll_characteristics(executable)
+    reqbits = IMAGE_DLL_CHARACTERISTICS_DYNAMIC_BASE
+    return (bits & reqbits) == reqbits
+
+# On 64 bit, must support high-entropy 64-bit address space layout randomization in addition to DYNAMIC_BASE
+# to have secure ASLR.
+def check_PE_HIGH_ENTROPY_VA(executable):
+    '''PIE: DllCharacteristics bit 0x20 signifies high-entropy ASLR'''
+    (arch,bits) = get_PE_dll_characteristics(executable)
+    if arch == 'i386:x86-64': 
+        reqbits = IMAGE_DLL_CHARACTERISTICS_HIGH_ENTROPY_VA
+    else: # Unnecessary on 32-bit
+        assert(arch == 'i386')
+        reqbits = 0
+    return (bits & reqbits) == reqbits
 
 def check_PE_NX(executable):
     '''NX: DllCharacteristics bit 0x100 signifies nxcompat (DEP)'''
-    return bool(get_PE_dll_characteristics(executable) & 0x100)
+    (arch,bits) = get_PE_dll_characteristics(executable)
+    return (bits & IMAGE_DLL_CHARACTERISTICS_NX_COMPAT) == IMAGE_DLL_CHARACTERISTICS_NX_COMPAT
 
 CHECKS = {
 'ELF': [
@@ -143,8 +169,11 @@ CHECKS = {
     ('Canary', check_ELF_Canary)
 ],
 'PE': [
-    ('PIE', check_PE_PIE),
+    ('DYNAMIC_BASE', check_PE_DYNAMIC_BASE),
+    ('HIGH_ENTROPY_VA', check_PE_HIGH_ENTROPY_VA),
     ('NX', check_PE_NX)
+],
+'MachO64': [
 ]
 }
 
@@ -155,6 +184,8 @@ def identify_executable(executable):
         return 'PE'
     elif magic.startswith(b'\x7fELF'):
         return 'ELF'
+    elif struct.unpack('I', magic)[0] == 0xFEEDFACF:
+        return 'MachO64'
     return None
 
 if __name__ == '__main__':
@@ -168,12 +199,18 @@ if __name__ == '__main__':
                 continue
 
             failed = []
+            warning = []
             for (name, func) in CHECKS[etype]:
                 if not func(filename):
-                    failed.append(name)
+                    if name in NONFATAL:
+                        warning.append(name)
+                    else:
+                        failed.append(name)
             if failed:
                 print('%s: failed %s' % (filename, ' '.join(failed)))
                 retval = 1
+            if warning:
+                print('%s: warning %s' % (filename, ' '.join(warning)))
         except IOError:
             print('%s: cannot open' % filename)
             retval = 1
