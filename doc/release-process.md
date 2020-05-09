@@ -2,106 +2,134 @@ Release Process
 ====================
 Meta: There should always be a single release engineer to disambiguate responsibility.
 
+If this is a hotfix release, please see `./hotfix-process.md` before proceeding.
+
 ## Pre-release
 
-Check all of the following:
+### Github Milestone
 
-- All dependencies have been updated as appropriate:
-  - BDB
-  - Boost
-  - ccache
-  - libgmp
-  - libsnark (upstream of our fork)
-  - libsodium
-  - miniupnpc
-  - OpenSSL
+Ensure all goals for the github milestone are met. If not, remove tickets
+or PRs with a comment as to why it is not included. (Running out of time
+is a common reason.)
 
-## A. Define the release version as:
+### Pre-release checklist:
 
-    $ ZCASH_RELEASE=MAJOR.MINOR.REVISION(-BUILD_STRING)
+Check that dependencies are properly hosted by looking at the `check-depends` builder:
 
-Example:
+  https://ci.z.cash/#/builders/1
 
-    $ ZCASH_RELEASE=1.0.0-beta2
+Check that there are no surprising performance regressions:
 
-Also, the following commands use the `ZCASH_RELEASE_PREV` bash variable for the
-previous release:
+  https://speed.z.cash
 
-    $ ZCASH_RELEASE_PREV=1.0.0-beta1
+Ensure that new performance metrics appear on that site.
 
-## B. Create a new release branch / github PR
-### B1. Update (commit) version in sources
+Update `src/chainparams.cpp` nMinimumChainWork with information from the getblockchaininfo rpc.
 
-    README.md
-    src/clientversion.h
-    configure.ac
-    contrib/DEBIAN/control
-    contrib/gitian-descriptors/gitian-linux.yml
+### Protocol Safety Checks:
 
-    Build and commit to update versions, and then perform the following commands:
+If this release changes the behavior of the protocol or fixes a serious
+bug, verify that a pre-release PR merge updated `PROTOCOL_VERSION` in
+`version.h` correctly.
 
-    help2man -n "RPC client for the Zcash daemon" src/zcash-cli > contrib/DEBIAN/manpages/zcash-cli.1
-    help2man -n "Network daemon for interacting with the Zcash blockchain" src/zcashd > contrib/DEBIAN/manpages/zcashd.1
+If this release breaks backwards compatibility or needs to prevent
+interaction with software forked projects, change the network magic
+numbers. Set the four `pchMessageStart` in `CTestNetParams` in
+`chainparams.cpp` to random values.
 
+Both of these should be done in standard PRs ahead of the release
+process. If these were not anticipated correctly, this could block the
+release, so if you suspect this is necessary, double check with the
+whole engineering team.
 
-In `configure.ac` and `clientversion.h`:
+## Release dependencies
 
-- Increment `CLIENT_VERSION_BUILD` according to the following schema:
+The release script has the following dependencies:
 
-  - 0-24: `1.0.0-beta1`-`1.0.0-beta25`
-  - 25-49: `1.0.0-rc1`-`1.0.0-rc25`
-  - 50: `1.0.0`
-  - 51-99: `1.0.0-1`-`1.0.0-49`
-  - (`CLIENT_VERSION_REVISION` rolls over)
-  - 0-24: `1.0.1-beta1`-`1.0.1-beta25`
+- `help2man`
+- `debchange` (part of the devscripts Debian package)
 
-- Change `CLIENT_VERSION_IS_RELEASE` to false while Zcash is in beta-test phase.
+You can optionally install the `progressbar2` Python module with pip to have a
+progress bar displayed during the build process.
 
-### B2. Write release notes
+## Release process
 
-Run the release-notes.py script to generate release notes and update authors.md file. For example:
+In the commands below, <RELEASE> and <RELEASE_PREV> are prefixed with a v, ie.
+v1.0.9 (not 1.0.9).
 
-    $ python zcutil/release-notes.py --version $ZCASH_RELEASE
+### Create the release branch
 
-Update the Debian package changelog:
+Run the release script, which will verify you are on the latest clean
+checkout of master, create a branch, then commit standard automated
+changes to that branch locally:
 
-    export DEBVERSION="${ZCASH_RELEASE}"
-    export DEBEMAIL="${DEBEMAIL:-team@z.cash}"
-    export DEBFULLNAME="${DEBFULLNAME:-Zcash Company}"
+    $ ./zcutil/make-release.py <RELEASE> <RELEASE_PREV> <RELEASE_FROM> <APPROX_RELEASE_HEIGHT>
 
-    dch -v $DEBVERSION -D jessie -c contrib/DEBIAN/changelog
+Examples:
 
-(`dch` comes from the devscripts package.)
+    $ ./zcutil/make-release.py v1.0.9 v1.0.8-1 v1.0.8-1 120000
+    $ ./zcutil/make-release.py v1.0.13 v1.0.13-rc1 v1.0.12 222900
 
-### B3. Change the network magics
+### Create, Review, and Merge the release branch pull request
 
-If this release breaks backwards compatibility, change the network magic
-numbers. Set the four `pchMessageStart` in `CTestNetParams` in `chainparams.cpp`
-to random values.
+Review the automated changes in git:
 
-### B4. Merge the previous changes
+    $ git log master..HEAD
 
-Do the normal pull-request, review, testing process for this release PR.
+Push the resulting branch to github:
 
-## C. Verify code artifact hosting
+    $ git push 'git@github.com:$YOUR_GITHUB_NAME/zcash' $(git rev-parse --abbrev-ref HEAD)
 
-### C1. Ensure depends tree is working
+Then create the PR on github. Complete the standard review process,
+then merge, then wait for CI to complete.
 
-https://ci.z.cash/builders/depends-sources
+## Make tag for the newly merged result
 
-### C2. Ensure public parameters work
+Checkout master and pull the latest version to ensure master is up to date with the release PR which was merged in before.
 
-Run `./fetch-params.sh`.
+    $ git checkout master
+    $ git pull --ff-only
 
-## D. Make tag for the newly merged result
+Check the last commit on the local and remote versions of master to make sure they are the same:
 
-In this example, we ensure master is up to date with the
-previous merged PR, then:
+    $ git log -1
 
-    $ git tag -s v${ZCASH_RELEASE}
-    $ git push origin v${ZCASH_RELEASE}
+The output should include something like, which is created by Homu:
 
-## E. Deploy testnet
+    Auto merge of #4242 - nathan-at-least:release-v1.0.9, r=nathan-at-least
+
+Then create the git tag. The `-s` means the release tag will be
+signed. **CAUTION:** Remember the `v` at the beginning here:
+
+    $ git tag -s v1.0.9
+    $ git push origin v1.0.9
+
+## Make and deploy deterministic builds
+
+- Run the [Gitian deterministic build environment](https://github.com/zcash/zcash-gitian)
+- Compare the uploaded [build manifests on gitian.sigs](https://github.com/zcash/gitian.sigs)
+- If all is well, the DevOps engineer will build the Debian packages and update the
+  [apt.z.cash package repository](https://apt.z.cash).
+
+## Add release notes to GitHub
+
+- Go to the [GitHub tags page](https://github.com/zcash/zcash/tags).
+- Click "Add release notes" beside the tag for this release.
+- Copy the release blog post into the release description, and edit to suit
+  publication on GitHub. See previous release notes for examples.
+- Click "Publish release" if publishing the release blog post now, or
+  "Save draft" to store the notes internally (and then return later to publish
+  once the blog post is up).
+
+Note that some GitHub releases are marked as "Verified", and others as
+"Unverified". This is related to the GPG signature on the release tag - in
+particular, GitHub needs the corresponding public key to be uploaded to a
+corresponding GitHub account. If this release is marked as "Unverified", click
+the marking to see what GitHub wants to be done.
+
+## Post Release Task List
+
+### Deploy testnet
 
 Notify the Zcash DevOps engineer/sysadmin that the release has been tagged. They update some variables in the company's automation code and then run an Ansible playbook, which:
 
@@ -112,20 +140,12 @@ Notify the Zcash DevOps engineer/sysadmin that the release has been tagged. They
 
 Then, verify that nodes can connect to the testnet server, and update the guide on the wiki to ensure the correct hostname is listed in the recommended zcash.conf.
 
-## F. Update the Beta Guide
-## G. Publish the release announcement (blog, zcash-dev, slack)
-## H. Make and deploy deterministic builds
+### Update the 1.0 User Guide
 
-- Run the [Gitian deterministic build environment](https://github.com/zcash/zcash-gitian)
-- Compare the uploaded [build manifests on gitian.sigs](https://github.com/zcash/gitian.sigs)
-- If all is well, the DevOps engineer will build the Debian packages and update the
-  [apt.z.cash package repository](https://apt.z.cash).
+This also means updating [the translations](https://github.com/zcash/zcash-docs).
+Coordinate with the translation team for now. Suggestions for improving this
+part of the process should be added to #2596.
 
-## I. Celebrate
+### Publish the release announcement (blog, github, zcash-dev, slack)
 
-## missing steps
-Zcash still needs:
-
-* thorough pre-release testing (presumably more thorough than standard PR tests)
-
-* automated release deployment (e.g.: updating build-depends mirror, deploying testnet, etc...)
+## Celebrate

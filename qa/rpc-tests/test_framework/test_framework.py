@@ -13,8 +13,11 @@ import shutil
 import tempfile
 import traceback
 
-from authproxy import AuthServiceProxy, JSONRPCException
-from util import *
+from authproxy import JSONRPCException
+from util import assert_equal, check_json_precision, \
+    initialize_chain, initialize_chain_clean, \
+    start_nodes, connect_nodes_bi, stop_nodes, \
+    sync_blocks, sync_mempools, wait_bitcoinds
 
 
 class BitcoinTestFramework(object):
@@ -87,11 +90,11 @@ class BitcoinTestFramework(object):
 
         parser = optparse.OptionParser(usage="%prog [options]")
         parser.add_option("--nocleanup", dest="nocleanup", default=False, action="store_true",
-                          help="Leave bitcoinds and test.* datadir on exit or error")
+                          help="Leave komodods and test.* datadir on exit or error")
         parser.add_option("--noshutdown", dest="noshutdown", default=False, action="store_true",
-                          help="Don't stop bitcoinds after the test execution")
+                          help="Don't stop komodods after the test execution")
         parser.add_option("--srcdir", dest="srcdir", default="../../src",
-                          help="Source directory containing bitcoind/bitcoin-cli (default: %default)")
+                          help="Source directory containing komodod/komodo-cli (default: %default)")
         parser.add_option("--tmpdir", dest="tmpdir", default=tempfile.mkdtemp(prefix="test"),
                           help="Root directory for datadirs")
         parser.add_option("--tracerpc", dest="trace_rpc", default=False, action="store_true",
@@ -134,7 +137,7 @@ class BitcoinTestFramework(object):
             stop_nodes(self.nodes)
             wait_bitcoinds()
         else:
-            print("Note: bitcoinds were not stopped and may still be running")
+            print("Note: komodods were not stopped and may still be running")
 
         if not self.options.nocleanup and not self.options.noshutdown:
             print("Cleaning up")
@@ -148,7 +151,7 @@ class BitcoinTestFramework(object):
             sys.exit(1)
 
 
-# Test framework for doing p2p comparison testing, which sets up some bitcoind
+# Test framework for doing p2p comparison testing, which sets up some komodod
 # binaries:
 # 1 binary: test binary
 # 2 binaries: 1 test binary, 1 ref binary
@@ -162,10 +165,10 @@ class ComparisonTestFramework(BitcoinTestFramework):
 
     def add_options(self, parser):
         parser.add_option("--testbinary", dest="testbinary",
-                          default=os.getenv("BITCOIND", "bitcoind"),
+                          default=os.getenv("BITCOIND", "komodod"),
                           help="bitcoind binary to test")
         parser.add_option("--refbinary", dest="refbinary",
-                          default=os.getenv("BITCOIND", "bitcoind"),
+                          default=os.getenv("BITCOIND", "komodod"),
                           help="bitcoind binary to use for reference nodes (if any)")
 
     def setup_chain(self):
@@ -177,3 +180,72 @@ class ComparisonTestFramework(BitcoinTestFramework):
                                     extra_args=[['-debug', '-whitelist=127.0.0.1']] * self.num_nodes,
                                     binary=[self.options.testbinary] +
                                            [self.options.refbinary]*(self.num_nodes-1))
+
+
+class CryptoconditionsTestFramework(BitcoinTestFramework):
+
+    def __init__(self):
+        self.num_nodes = 2
+
+    def setup_chain(self):
+        print("Initializing CC test directory "+self.options.tmpdir)
+        initialize_chain_clean(self.options.tmpdir, self.num_nodes)
+
+    def setup_network(self, split = False):
+        print("Setting up network...")
+        self.addr    = "RWPg8B91kfK5UtUN7z6s6TeV9cHSGtVY8D"
+        self.pubkey  = "02676d00110c2cd14ae24f95969e8598f7ccfaa675498b82654a5b5bd57fc1d8cf"
+        self.privkey = "UqMgxk7ySPNQ4r9nKAFPjkXy6r5t898yhuNCjSZJLg3RAM4WW1m9"
+        self.addr1    = "RXEXoa1nRmKhMbuZovpcYwQMsicwzccZBp"
+        self.pubkey1  = "024026d4ad4ecfc1f705a9b42ca64af6d2ad947509c085534a30b8861d756c6ff0"
+        self.privkey1 = "UtdydP56pGTFmawHzHr1wDrc4oUwCNW1ttX8Pc3KrvH3MA8P49Wi"
+        self.nodes   = start_nodes(self.num_nodes, self.options.tmpdir,
+                    extra_args=[[
+                    # always give -ac_name as first extra_arg and port as third
+                    '-ac_name=REGTEST',
+                    '-conf='+self.options.tmpdir+'/node0/REGTEST.conf',
+                    '-port=64367',
+                    '-rpcport=64368',
+                    '-regtest',
+                    '-addressindex=1',
+                    '-spentindex=1',
+                    '-ac_supply=5555555',
+                    '-ac_reward=10000000000000',
+                    '-pubkey=' + self.pubkey,
+                    '-ac_cc=2',
+                    '-whitelist=127.0.0.1',
+                    '-debug',
+                    '--daemon',
+                    '-rpcuser=rt',
+                    '-rpcpassword=rt'
+                    ],
+                    ['-ac_name=REGTEST',
+                    '-conf='+self.options.tmpdir+'/node1/REGTEST.conf',
+                    '-port=64365',
+                    '-rpcport=64366',
+                    '-regtest',
+                    '-addressindex=1',
+                    '-spentindex=1',
+                    '-ac_supply=5555555',
+                    '-ac_reward=10000000000000',
+                    '-pubkey=' + self.pubkey1,
+                    '-ac_cc=2',
+                    '-whitelist=127.0.0.1',
+                    '-debug',
+                    '-addnode=127.0.0.1:64367',
+                    '--daemon',
+                    '-rpcuser=rt',
+                    '-rpcpassword=rt']]
+        )
+        self.is_network_split = split
+        self.rpc              = self.nodes[0]
+        self.rpc1             = self.nodes[1]
+        self.sync_all()
+        print("Done setting up network")
+
+    def send_and_mine(self, xtn, rpc_connection):
+        txid = rpc_connection.sendrawtransaction(xtn)
+        assert txid, 'got txid'
+        # we need the tx above to be confirmed in the next block
+        rpc_connection.generate(1)
+        return txid

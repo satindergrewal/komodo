@@ -1,4 +1,5 @@
 # Copyright (c) 2014 The Bitcoin Core developers
+# Copyright (c) 2018-2019 The SuperNET developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 #
@@ -9,6 +10,8 @@
 import os
 import sys
 
+from binascii import hexlify, unhexlify
+from base64 import b64encode
 from decimal import Decimal, ROUND_DOWN
 import json
 import random
@@ -17,8 +20,7 @@ import subprocess
 import time
 import re
 
-from authproxy import AuthServiceProxy, JSONRPCException
-from util import *
+from authproxy import AuthServiceProxy
 
 def p2p_port(n):
     return 11000 + n + os.getpid()%999
@@ -31,6 +33,15 @@ def check_json_precision():
     satoshis = int(json.loads(json.dumps(float(n)))*1.0e8)
     if satoshis != 2000000000000003:
         raise RuntimeError("JSON encode/decode loses precision")
+
+def bytes_to_hex_str(byte_str):
+    return hexlify(byte_str).decode('ascii')
+
+def hex_str_to_bytes(hex_str):
+    return unhexlify(hex_str.encode('ascii'))
+
+def str_to_b64str(string):
+    return b64encode(string.encode('utf-8')).decode('ascii')
 
 def sync_blocks(rpc_connections, wait=1):
     """
@@ -45,7 +56,7 @@ def sync_blocks(rpc_connections, wait=1):
 def sync_mempools(rpc_connections, wait=1):
     """
     Wait until everybody has the same transactions in their memory
-    pools
+    pools, and has notified all internal listeners of them
     """
     while True:
         pool = set(rpc_connections[0].getrawmempool())
@@ -57,43 +68,69 @@ def sync_mempools(rpc_connections, wait=1):
             break
         time.sleep(wait)
 
+    # Now that the mempools are in sync, wait for the internal
+    # notifications to finish
+    while True:
+        notified = [ x.getmempoolinfo()['fullyNotified'] for x in rpc_connections ]
+        if notified == [ True ] * len(notified):
+            break
+        time.sleep(wait)
+
 bitcoind_processes = {}
 
 def initialize_datadir(dirname, n):
     datadir = os.path.join(dirname, "node"+str(n))
     if not os.path.isdir(datadir):
         os.makedirs(datadir)
-    with open(os.path.join(datadir, "zcash.conf"), 'w') as f:
+    # kmd AC's don't use this, they use the conf auto-created when the AC is created
+    # plus CLI arguments. This is for komodod tests
+    print("Writing to " + os.path.join(datadir,"komodo.conf"))
+    with open(os.path.join(datadir, "komodo.conf"), 'w') as f:
         f.write("regtest=1\n");
+        f.write("txindex=1\n");
+        f.write("server=1\n");
         f.write("showmetrics=0\n");
         f.write("rpcuser=rt\n");
         f.write("rpcpassword=rt\n");
-        f.write("port="+str(p2p_port(n))+"\n");
-        f.write("rpcport="+str(rpc_port(n))+"\n");
+        #f.write("port="+str(p2p_port(n))+"\n");
+        #rpcport = str(rpc_port(n))
+        #f.write("rpcport="+rpcport+"\n");
+        #print "RPC port=" + rpcport
+        f.write("listenonion=0\n");
+        # TODO: maybe make these optional, defaulted to on for now
+        f.write("addressindex=1\n");
+        f.write("spentindex=1\n");
+        f.write("timestampindex=1\n");
     return datadir
 
 def initialize_chain(test_dir):
     """
     Create (or copy from cache) a 200-block-long chain and
     4 wallets.
-    bitcoind and bitcoin-cli must be in search path.
+    komodod and komodo-cli must be in search path.
     """
 
+    print("initialize_chain")
     if not os.path.isdir(os.path.join("cache", "node0")):
         devnull = open("/dev/null", "w+")
-        # Create cache directories, run bitcoinds:
+        # Create cache directories, run komodods:
         for i in range(4):
             datadir=initialize_datadir("cache", i)
-            args = [ os.getenv("BITCOIND", "bitcoind"), "-keypool=1", "-datadir="+datadir, "-discover=0" ]
+            args = [ os.getenv("BITCOIND", "komodod"), "-keypool=1", "-datadir="+datadir, "-discover=0" ]
             if i > 0:
                 args.append("-connect=127.0.0.1:"+str(p2p_port(0)))
             bitcoind_processes[i] = subprocess.Popen(args)
+            cmd      = os.getenv("BITCOINCLI", "komodo-cli")
+            cmd_args = cmd + " -datadir="+datadir + " -rpcwait getblockcount"
             if os.getenv("PYTHON_DEBUG", ""):
-                print "initialize_chain: bitcoind started, calling bitcoin-cli -rpcwait getblockcount"
-            subprocess.check_call([ os.getenv("BITCOINCLI", "bitcoin-cli"), "-datadir="+datadir,
-                                    "-rpcwait", "getblockcount"], stdout=devnull)
+                print "initialize_chain: komodod started, calling: " + cmd_args
+            strcmd = cmd + " " + "-datadir="+datadir + " -rpcwait getblockcount"
+
+            print("Running " + strcmd)
+            subprocess.check_call(strcmd, shell=True);
+            #subprocess.check_call([ cmd, "-rpcwait", "getblockcount"], stdout=devnull)
             if os.getenv("PYTHON_DEBUG", ""):
-                print "initialize_chain: bitcoin-cli -rpcwait getblockcount completed"
+                print "initialize_chain: komodo-cli -rpcwait getblockcount completed"
         devnull.close()
         rpcs = []
         for i in range(4):
@@ -131,7 +168,7 @@ def initialize_chain(test_dir):
         from_dir = os.path.join("cache", "node"+str(i))
         to_dir = os.path.join(test_dir,  "node"+str(i))
         shutil.copytree(from_dir, to_dir)
-        initialize_datadir(test_dir, i) # Overwrite port/rpcport in zcash.conf
+        initialize_datadir(test_dir, i) # Overwrite port/rpcport in komodo.conf
 
 def initialize_chain_clean(test_dir, num_nodes):
     """
@@ -139,7 +176,7 @@ def initialize_chain_clean(test_dir, num_nodes):
     Useful if a test case wants complete control over initialization.
     """
     for i in range(num_nodes):
-        datadir=initialize_datadir(test_dir, i)
+        initialize_datadir(test_dir, i)
 
 
 def _rpchost_to_args(rpchost):
@@ -164,34 +201,63 @@ def _rpchost_to_args(rpchost):
 
 def start_node(i, dirname, extra_args=None, rpchost=None, timewait=None, binary=None):
     """
-    Start a bitcoind and return RPC connection to it
+    Start a komodod and return RPC connection to it
     """
     datadir = os.path.join(dirname, "node"+str(i))
+    # creating special config in case of cryptocondition asset chain test
+    if extra_args[0] == '-ac_name=REGTEST':
+        configpath = datadir + "/REGTEST.conf"
+        with open(configpath, "w+") as config:
+            config.write("regtest=1\n")
+            config.write("rpcuser=rt\n")
+            config.write("rpcpassword=rt\n")
+            port = extra_args[3]
+            config.write("rpcport=" + (port[9:]) + "\n")
+            config.write("server=1\n")
+            config.write("txindex=1\n")
+            config.write("rpcworkqueue=256\n")
+            config.write("rpcallowip=127.0.0.1\n")
+            config.write("bind=127.0.0.1\n")
+            config.write("rpcbind=127.0.0.1")
     if binary is None:
-        binary = os.getenv("BITCOIND", "bitcoind")
+        binary = os.getenv("BITCOIND", "komodod")
     args = [ binary, "-datadir="+datadir, "-keypool=1", "-discover=0", "-rest" ]
     if extra_args is not None: args.extend(extra_args)
+    #print("args=" + ' '.join(args))
     bitcoind_processes[i] = subprocess.Popen(args)
     devnull = open("/dev/null", "w+")
+
+    cmd = os.getenv("BITCOINCLI", "komodo-cli")
+    print("cmd=" + cmd)
+    cmd_args = ' '.join(extra_args) + " -rpcwait getblockcount "
     if os.getenv("PYTHON_DEBUG", ""):
-        print "start_node: bitcoind started, calling bitcoin-cli -rpcwait getblockcount"
-    subprocess.check_call([ os.getenv("BITCOINCLI", "bitcoin-cli"), "-datadir="+datadir] +
-                          _rpchost_to_args(rpchost)  +
-                          ["-rpcwait", "getblockcount"], stdout=devnull)
+        print "start_node: komodod started, calling : " + cmd + " " + cmd_args
+    strcmd = cmd + " " + cmd_args
+
+    print("Running " + strcmd)
+    import time
+    time.sleep(2)
+    subprocess.check_call(strcmd, shell=True);
+    #subprocess.check_call([ os.getenv("BITCOINCLI", "komodo-cli"), "-datadir="+datadir] +
+    #                      _rpchost_to_args(rpchost)  +
+    #                      ["-rpcwait", "-rpcport=6438", "getblockcount"], stdout=devnull)
     if os.getenv("PYTHON_DEBUG", ""):
-        print "start_node: calling bitcoin-cli -rpcwait getblockcount returned"
+        print "start_node: calling komodo-cli -rpcwait getblockcount returned"
     devnull.close()
-    url = "http://rt:rt@%s:%d" % (rpchost or '127.0.0.1', rpc_port(i))
+    port = extra_args[3]
+    url = "http://rt:rt@%s:%d" % (rpchost or '127.0.0.1', int(port[9:]))
+    print("connecting to " + url)
     if timewait is not None:
         proxy = AuthServiceProxy(url, timeout=timewait)
     else:
         proxy = AuthServiceProxy(url)
+    print("created proxy")
     proxy.url = url # store URL on proxy for info
     return proxy
 
 def start_nodes(num_nodes, dirname, extra_args=None, rpchost=None, binary=None):
     """
-    Start multiple bitcoinds, return RPC connections to them
+    Start multiple komodods, return RPC connections to them
     """
     if extra_args is None: extra_args = [ None for i in range(num_nodes) ]
     if binary is None: binary = [ None for i in range(num_nodes) ]
@@ -199,6 +265,10 @@ def start_nodes(num_nodes, dirname, extra_args=None, rpchost=None, binary=None):
 
 def log_filename(dirname, n_node, logname):
     return os.path.join(dirname, "node"+str(n_node), "regtest", logname)
+
+def check_node(i):
+    bitcoind_processes[i].poll()
+    return bitcoind_processes[i].returncode
 
 def stop_node(node, i):
     node.stop()
@@ -338,13 +408,28 @@ def random_transaction(nodes, amount, min_fee, fee_increment, fee_variants):
 
     return (txid, signresult["hex"], fee)
 
-def assert_equal(thing1, thing2):
-    if thing1 != thing2:
-        raise AssertionError("%s != %s"%(str(thing1),str(thing2)))
+def assert_equal(expected, actual, message=""):
+    if expected != actual:
+        if message:
+            message = "; %s" % message 
+        raise AssertionError("(left == right)%s\n  left: <%s>\n right: <%s>" % (message, str(expected), str(actual)))
 
+def assert_true(condition, message = ""):
+    if not condition:
+        raise AssertionError(message)
+        
+def assert_false(condition, message = ""):
+    assert_true(not condition, message)
+
+# assert thing2 > thing1
 def assert_greater_than(thing1, thing2):
     if thing1 <= thing2:
         raise AssertionError("%s <= %s"%(str(thing1),str(thing2)))
+
+# assert thing2 >= thing1
+def assert_greater_than_or_equal(thing1, thing2):
+    if thing1 < thing2:
+        raise AssertionError("%s < %s"%(str(thing1),str(thing2)))
 
 def assert_raises(exc, fun, *args, **kwds):
     try:
@@ -355,3 +440,38 @@ def assert_raises(exc, fun, *args, **kwds):
         raise AssertionError("Unexpected exception raised: "+type(e).__name__)
     else:
         raise AssertionError("No exception raised")
+
+# Returns txid if operation was a success or None
+def wait_and_assert_operationid_status(node, myopid, in_status='success', in_errormsg=None, timeout=300):
+    print('waiting for async operation {}'.format(myopid))
+    result = None
+    for _ in xrange(1, timeout):
+        results = node.z_getoperationresult([myopid])
+        if len(results) > 0:
+            result = results[0]
+            break
+        time.sleep(1)
+
+    assert_true(result is not None, "timeout occured")
+    status = result['status']
+
+    txid = None
+    errormsg = None
+    if status == "failed":
+        errormsg = result['error']['message']
+    elif status == "success":
+        txid = result['result']['txid']
+
+    if os.getenv("PYTHON_DEBUG", ""):
+        print('...returned status: {}'.format(status))
+        if errormsg is not None:
+            print('...returned error: {}'.format(errormsg))
+    
+    assert_equal(in_status, status, "Operation returned mismatched status. Error Message: {}".format(errormsg))
+
+    if errormsg is not None:
+        assert_true(in_errormsg is not None, "No error retured. Expected: {}".format(errormsg))
+        assert_true(in_errormsg in errormsg, "Error returned: {}. Error expected: {}".format(errormsg, in_errormsg))
+        return result # if there was an error return the result
+    else:
+        return txid # otherwise return the txid
