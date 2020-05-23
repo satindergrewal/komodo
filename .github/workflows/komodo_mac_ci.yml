@@ -1,14 +1,10 @@
 name: Komodo MacOS CI
 
 on:
-  push:
-    branches:
-      - dev
-#  pull_request:
-#    types: [opened, synchronize, reopened]
+  pull_request:
+    types: [opened, synchronize, reopened]
   schedule:
-    - cron: '0/5 * * * *'
-#    - cron: '0 0 * * 1'
+    - cron: '0 0 * * 1'
 
 jobs:
 
