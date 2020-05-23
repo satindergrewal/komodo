@@ -4,14 +4,15 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
   schedule:
-    - cron: '0 0 * * 1'
+    - cron: '0/5 * * * *'
+#    - cron: '0 0 * * 1'
 
 jobs:
 
   macos-build:
     name: MacOS Build
     runs-on: macos-latest
-    
+
     steps:
       - uses: actions/checkout@v2
 
