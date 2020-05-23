@@ -34,10 +34,10 @@ jobs:
 
       - name: Install deps (Linux)
         run: |
-          sudo apt-get remove php7.1-fpm php7.2-fpm php7.3-fpm php7.3-common php7.4-fpm msodbcsql17
+          sudo apt-get update  # prevents repo404 errors on apt-remove below
+          sudo apt-get remove php5.6-fpm php7.0-fpm php7.1-fpm php7.2-fpm php7.3-fpm php7.3-common php7.4-fpm msodbcsql17 mysql-server*
           sudo apt-get update
-          sudo apt-get upgrade -y
-          sudo apt-get update
+          sudo ACCEPT_EULA=Y apt-get upgrade -y
           sudo apt-get install -q \
                  curl \
                  python3 \
@@ -108,6 +108,7 @@ jobs:
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
+          sudo apt-get update  # prevents repo404 errors on apt-remove below
           sudo apt-get remove php5.6-fpm php7.0-fpm php7.1-fpm php7.2-fpm php7.3-fpm php7.3-common php7.4-fpm
           sudo apt-get update
           sudo apt-get upgrade -y
@@ -194,8 +195,5 @@ jobs:
           with:
             upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps
             asset_path: komodo-win/komodo-win.zip
-            asset_name: komodo_${{ steps.shortify_commit.outputs.sha_short }}_${{ steps.extract_branch.outputs.branch }}_win.zip
-            asset_content_type: application/zip
-: komodo-win/komodo-win.zip
             asset_name: komodo_${{ steps.shortify_commit.outputs.sha_short }}_${{ steps.extract_branch.outputs.branch }}_win.zip
             asset_content_type: application/zip
