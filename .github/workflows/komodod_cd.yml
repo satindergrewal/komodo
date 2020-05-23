@@ -3,10 +3,10 @@
 name: Komodo CD test releases
 
 
-#on:
-#  push:
-#    branches-ignore:
-#    - '**'
+on:
+  push:
+    branches:
+    - dev
 
 
 
