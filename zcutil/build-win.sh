@@ -31,4 +31,4 @@ cd src/
 CC="${CC} -g " CXX="${CXX} -g " make V=1  komodod.exe komodo-cli.exe komodo-tx.exe
 
 cd $WD/src/cc/dapps/
-make subatomic
+make subatomic_win
