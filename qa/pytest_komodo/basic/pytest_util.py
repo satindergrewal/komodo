@@ -4,11 +4,12 @@ import os
 import random
 import string
 import hashlib
+import re
 try:
     from slickrpc import Proxy
     from slickrpc.exc import RpcException as RPCError
     from pycurl import error as HttpError
-except ImportError:
+except ImportError:  # fallback to bitcoinrpc
     from bitcoinrpc.authproxy import AuthServiceProxy as Proxy
     from bitcoinrpc.authproxy import JSONRPCException as RPCError
     from http.client import HTTPException as HttpError
@@ -35,7 +36,7 @@ def validate_proxy(env_params_dictionary, proxy, node=0):
         except Exception as e:
             print("Coennction failed, error: ", e, "\nRetrying")
             attempts += 1
-            time.sleep(2)
+            time.sleep(10)
         if attempts > 15:
             raise ChildProcessError("Node ", node, " does not respond")
     print("IMPORTING PRIVKEYS")
@@ -72,13 +73,18 @@ def enable_mining(proxy):
             raise ChildProcessError("Node did not start correctly, aborting\n")
 
 
-def mine_and_waitconfirms(txid, proxy):  # should be used after tx is send
+def mine_and_waitconfirms(txid, proxy, confs_req=2):  # should be used after tx is send
     # we need the tx above to be confirmed in the next block
     attempts = 0
     while True:
         try:
             confirmations_amount = proxy.getrawtransaction(txid, 1)['confirmations']
-            break
+            if confirmations_amount < confs_req:
+                print("\ntx is not confirmed yet! Let's wait a little more")
+                time.sleep(5)
+            else:
+                print("\ntx confirmed")
+                return True
         except KeyError as e:
             print("\ntx is in mempool still probably, let's wait a little bit more\nError: ", e)
             time.sleep(5)
@@ -88,13 +94,6 @@ def mine_and_waitconfirms(txid, proxy):  # should be used after tx is send
             else:
                 print("\nwaited too long - probably tx stuck by some reason")
                 return False
-    if confirmations_amount < 2:
-        print("\ntx is not confirmed yet! Let's wait a little more")
-        time.sleep(5)
-        return True
-    else:
-        print("\ntx confirmed")
-        return True
 
 
 def validate_transaction(proxy, txid, conf_req):
@@ -201,7 +200,7 @@ def randomhex():  # returns 64 chars long pubkey-like hex string
     return (''.join(random.choice(chars) for i in range(64))).lower()
 
 
-def write_file(filename):
+def write_file(filename):  # creates text file
     lines = 10
     content = ''
     for x in range(lines):
@@ -210,6 +209,14 @@ def write_file(filename):
         f.write(str('filename\n'))
         f.write(content)
     return True
+
+
+def write_empty_file(filename: str, size: int):  # creates empty file slightly bigger than size in mb
+    if os.path.isfile(filename):
+        os.remove(filename)
+    with open(filename, 'wb') as f:
+        f.seek((size * 1024 * 1025) - 1)
+        f.write(b'\0')
 
 
 def get_size(file):
@@ -227,3 +234,35 @@ def get_filehash(file):
         return str(fhash)
     else:
         raise FileNotFoundError
+
+
+def validate_tx_pattern(txid):
+    if not isinstance(txid, str):
+        return False
+    pattern = re.compile('[0-9a-f]{64}')
+    if pattern.match(txid):
+        return True
+    else:
+        return False
+
+
+def validate_raddr_pattern(addr):
+    if not isinstance(addr, str):
+        return False
+    address_pattern = re.compile(r"R[a-zA-Z0-9]{33}\Z")
+    if address_pattern.match(addr):
+        return True
+    else:
+        return False
+
+
+def wait_blocks(rpc_connection, blocks_to_wait):
+    init_height = int(rpc_connection.getinfo()["blocks"])
+    while True:
+        current_height = int(rpc_connection.getinfo()["blocks"])
+        height_difference = current_height - init_height
+        if height_difference < blocks_to_wait:
+            print("Waiting for more blocks")
+            time.sleep(5)
+        else:
+            return True
