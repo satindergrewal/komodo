@@ -11,5 +11,9 @@ subatomic:
 	$(CXX) -c -std=c++17 -Wfatal-errors -Wall -Wextra -Werror subatomic_utils.cpp
 	$(CC) -Wall -Wextra -Wfatal-errors -o ../../subatomic subatomic.c subatomic_utils.o -lstdc++ -lstdc++fs -lcurl -lm
 
+subatomic_win:
+	$(CXX) -c -std=c++17 -Wfatal-errors -Wall -Wextra -Werror subatomic_utils.cpp
+	$(CC) -Wall -Wextra -Wfatal-errors -o ../../subatomic.exe subatomic.c subatomic_utils.o -lstdc++ -lstdc++fs -lcurl -lm
+
 clean:
 	rm zmigrate oraclefeed subatomic
