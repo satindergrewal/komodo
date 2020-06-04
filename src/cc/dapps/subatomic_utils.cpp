@@ -6,13 +6,20 @@
 #include <stdarg.h>
 #include <algorithm>
 #include <fstream>
-#include <filesystem>
+
+#if defined(_WIN64)
+  #define PLATFORM_NAME "windows" // Windows
+  #include <experimental/filesystem>
+  namespace fs = std::experimental::filesystem;
+#else
+  #include <filesystem>
+  namespace fs = std::filesystem;
+#endif
+
 #include <iostream>
 #include <unordered_map>
 #include <string>
 
-
-namespace fs = std::filesystem;
 
 using t_config_key = std::string;
 using t_config_value = std::string;
