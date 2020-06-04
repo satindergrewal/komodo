@@ -7,10 +7,11 @@ import pytest
 import time
 # from decimal import *
 import sys
+import os
 
 sys.path.append('../')
-from basic.pytest_util import randomstring, in_99_range, collect_orderids,\
-                              get_size, write_file, get_filehash, compare_rough
+from basic.pytest_util import randomstring, in_99_range, collect_orderids, check_synced, \
+                              get_size, write_file, get_filehash, compare_rough, write_empty_file
 
 
 @pytest.mark.usefixtures("proxy_connection")
@@ -308,6 +309,19 @@ class TestDexP2Pe2e:
         fhash1 = get_filehash(filename1)
         fhash2 = get_filehash(filename2)
 
+        # check error filename_too_long
+        filename_err = 'file_' + randomstring(15)
+        res = rpc1.DEX_publish(filename_err, '0')
+        assert res.get('result') == 'error'
+        assert res.get('error') == "filename longer than 15 chars"
+
+        # check error file not exist
+        filename_err = randomstring(1)
+        res = rpc1.DEX_publish(filename_err, '0')
+        assert res.get('result') == 'error'
+        assert res.get('error') == "file not found"
+        assert res.get('filename') == filename_err
+
         # publish both files on 1st node
         res = rpc1.DEX_publish(filename1, '0')
         f_id1 = str(res.get('id'))
@@ -322,6 +336,7 @@ class TestDexP2Pe2e:
         assert res.get('filesize') == size2
         assert res.get('filehash') == fhash2
         time.sleep(20)  # time to broadcast files to node1
+        check_synced(rpc1, rpc2)
 
         # Both nodes should be able locate file by files tag and locators tag
         res = rpc1.DEX_list('0', '0', 'files')
@@ -390,6 +405,63 @@ class TestDexP2Pe2e:
         assert res.get('filesize') == size2
         assert res.get('filehash') == fhash2
 
+        # test file upload from dexp2p share directory
+        fallbackpath = ''
+        if os.name == 'posix':
+            dex_path = os.environ['HOME'] + '/dexp2p/'
+            if not os.path.isdir(dex_path):
+                os.mkdir(dex_path)
+            if os.stat(dex_path).st_uid != os.getuid():
+                raise NotADirectoryError("Directory not owned by current user: ", dex_path)
+        else:
+            appdatadir = os.environ['APPDATA']
+            dex_path = appdatadir + '\\dexp2p\\'
+            if not os.path.isdir(dex_path):
+                raise NotADirectoryError("Directory does not exists or not owned by current user: ", dex_path)
+            fallbackpath = os.environ['HOMEDRIVE'] + '\\tmp\\dexp2p\\'
+        pubkey = rpc1.DEX_stats().get('publishable_pubkey')
+        file_shortname3 = 'file_' + randomstring(5)
+        file_fullname3 = dex_path + file_shortname3
+        write_empty_file(file_fullname3, 10)
+        size = get_size(file_fullname3)
+        fhash = get_filehash(file_fullname3)
+        res = rpc1.DEX_publish(file_shortname3, '0')
+        assert res.get('result') == 'success'
+        assert res.get('fname') == file_shortname3
+        assert res.get('filesize') == size
+        assert res.get('filehash') == fhash
+        time.sleep(20)
+        res = rpc2.DEX_subscribe(file_shortname3, '0', '0', pubkey)
+        assert res.get('result') == 'success'
+        assert res.get('fname') == file_shortname3
+        assert res.get('filesize') == size
+        assert res.get('filehash') == fhash
+
+        # Not actual atm
+        # # Check fallback to tmp dir on Windows
+        # if os.name != 'posix':
+        #     for root, dirs, files in os.walk(dex_path, topdown=False):
+        #         for name in files:
+        #             os.remove(os.path.join(root, name))
+        #         for name in dirs:
+        #             os.rmdir(os.path.join(root, name))
+        #     file_shortname4 = 'file_' + randomstring(5)
+        #     file_fullname4 = fallbackpath + file_shortname4
+        #     write_empty_file(file_fullname4, 10)
+        #     size = get_size(file_fullname4)
+        #     fhash = get_filehash(file_fullname4)
+        #     res = rpc1.DEX_publish(file_shortname4, '0')
+        #     assert res.get('result') == 'success'
+        #     assert res.get('fname') == file_shortname4
+        #     assert res.get('filesize') == size
+        #     assert res.get('filehash') == fhash
+        #     time.sleep(20)
+        #     res = rpc2.DEX_subscribe(file_shortname4, '0', '0', pubkey)
+        #     assert res.get('result') == 'success'
+        #     assert res.get('fname') == file_shortname4
+        #     assert res.get('filesize') == size
+        #     assert res.get('filehash') == fhash
+
     def test_dex_encryption(self, test_params):
         rpc1 = test_params.get('node1').get('rpc')
         message = randomstring(15)
@@ -449,3 +521,30 @@ class TestDexP2Pe2e:
             if match.get('id') == msg_id:
                 assert match.get('anonmsg') == message
                 assert match.get('anonsender') == pub
+
+    def test_dex_zero_broadcast(self, test_params):  # zero length payload
+        rpc1 = test_params.get('node1').get('rpc')
+        rpc2 = test_params.get('node1').get('rpc')
+        payload = ''
+        taga = randomstring(15)
+        tagb = randomstring(15)
+        priority = '1'
+        pubkey = rpc1.DEX_stats().get('publishable_pubkey')
+
+        res = rpc1.DEX_broadcast(payload, priority, taga, tagb, pubkey)
+        assert not res  # should have empty response
+        res = rpc1.DEX_broadcast(payload, priority, '', '', '')
+        assert not res
+        res = rpc1.DEX_broadcast(payload, priority, taga, '', '')
+        assert not res
+        time.sleep(15)
+
+        # no messages should be listed
+        res = rpc1.DEX_list('', '1', taga, tagb, '')
+        assert not res.get('matches')
+        res = rpc1.DEX_list('', '1', taga, '', '')
+        assert not res.get('matches')
+        res = rpc2.DEX_list('', '1', taga, tagb, '')
+        assert not res.get('matches')
+        res = rpc2.DEX_list('', '1', taga, '', '')
+        assert not res.get('matches')
