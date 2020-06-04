@@ -1047,7 +1047,7 @@ CBlockTemplate* CreateNewBlockWithKey(CReserveKey& reservekey, int32_t nHeight, 
             scriptPubKey[34] = OP_CHECKSIG;
         }
     }
-    if ( ASSETCHAINS_MARMARA != 0 && nHeight > 0 && (nHeight & 1) == 0 )
+    // if ( ASSETCHAINS_MARMARA != 0 && nHeight > 0 && (nHeight & 1) == 0 )
         // scriptPubKey = Marmara_scriptPubKey(nHeight,pubkey);
     return CreateNewBlock(pubkey, scriptPubKey, gpucount, isStake);
 }

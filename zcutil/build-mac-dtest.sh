@@ -48,6 +48,7 @@ WD=$PWD
 cd src/cc
 echo $PWD
 ./makecustom
+
 cd $WD
 
 ./autogen.sh
