@@ -1,8 +1,8 @@
 #!/bin/bash
 export HOST=x86_64-w64-mingw32
-CXX=x86_64-w64-mingw32-g++-posix
-CC=x86_64-w64-mingw32-gcc-posix
-PREFIX="$(pwd)/depends/$HOST"
+export CXX=x86_64-w64-mingw32-g++-posix
+export CC=x86_64-w64-mingw32-gcc-posix
+export PREFIX="$(pwd)/depends/$HOST"
 
 set -eu -o pipefail
 
