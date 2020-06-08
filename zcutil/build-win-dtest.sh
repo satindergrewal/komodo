@@ -11,7 +11,7 @@ cd "$(dirname "$(readlink -f "$0")")/.."
 
 cd depends/ && make HOST=$HOST V=1 NO_QT=1
 cd ../
-WD=$PWD
+export WD=$PWD
 cd src/cc
 echo $PWD
 ./makecustom
