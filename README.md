@@ -121,6 +121,14 @@ sudo update-alternatives --config x86_64-w64-mingw32-gcc
 sudo update-alternatives --config x86_64-w64-mingw32-g++
 # (configure to use POSIX variant)
 
+# Compile and install curl for mingw libs
+git clone https://github.com/curl/curl.git
+cd curl
+./configure --build x86_64-pc-linux-gnu --host x86_64-w64-mingw32 --prefix=/usr/x86_64-w64-mingw32
+make
+sudo make install
+
+
 git clone https://github.com/jl777/komodo --branch master --single-branch
 cd komodo
 ./zcutil/fetch-params.sh
