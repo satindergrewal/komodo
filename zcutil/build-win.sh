@@ -1,8 +1,8 @@
 #!/bin/bash
 export HOST=x86_64-w64-mingw32
-CXX=x86_64-w64-mingw32-g++-posix
-CC=x86_64-w64-mingw32-gcc-posix
-PREFIX="$(pwd)/depends/$HOST"
+export CXX=x86_64-w64-mingw32-g++-posix
+export CC=x86_64-w64-mingw32-gcc-posix
+export PREFIX="$(pwd)/depends/$HOST"
 
 set -eu -o pipefail
 
@@ -29,3 +29,6 @@ CONFIG_SITE=$PWD/depends/x86_64-w64-mingw32/share/config.site CXXFLAGS="-DPTW32_
 sed -i 's/-lboost_system-mt /-lboost_system-mt-s /' configure
 cd src/
 CC="${CC} -g " CXX="${CXX} -g " make V=1  komodod.exe komodo-cli.exe komodo-tx.exe
+
+cd $WD/src/cc/dapps/
+make subatomic_win

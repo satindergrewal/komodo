@@ -13,7 +13,6 @@
 
 
 namespace fs = std::filesystem;
-
 using t_config_key = std::string;
 using t_config_value = std::string;
 using t_config_registry = std::unordered_map<t_config_key, t_config_value>;
@@ -77,7 +76,7 @@ char* get_komodo_config_path()
   #else
   fs::path conf_root = fs::path(std::getenv("HOME")) / ".komodo/komodo.conf";
   #endif
-  return strdup(conf_root.c_str());
+  return strdup(conf_root.string().c_str());
 }
 
 char* get_komodo_config_parent_path()
@@ -87,7 +86,7 @@ char* get_komodo_config_parent_path()
   #else
   fs::path conf_root = fs::path(std::getenv("HOME")) / ".komodo";
   #endif
-  return strdup(conf_root.c_str());
+  return strdup(conf_root.string().c_str());
 }
 
 bool get_conf_content(const std::string& ticker, std::vector<std::string>& vec_out)
@@ -99,7 +98,7 @@ bool get_conf_content(const std::string& ticker, std::vector<std::string>& vec_o
     path = get_komodo_config_parent_path();
     auto tmp = fs::path(path) / ticker / (ticker + ".conf");
     free(path);
-    path = strdup(tmp.c_str());
+    path = strdup(tmp.string().c_str());
     std::cout << "ticker conf path: " << path << std::endl;
   }
   std::ifstream ifs(path);

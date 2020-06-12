@@ -113,3 +113,6 @@ echo $PWD
 cd $WD
 
 "$MAKE" "$@" V=1
+
+cd $WD/src/cc/dapps/
+make subatomic
