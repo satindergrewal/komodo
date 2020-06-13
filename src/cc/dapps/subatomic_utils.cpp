@@ -120,7 +120,7 @@ bool get_conf_content(const std::string& ticker, std::vector<std::string>& vec_o
     auto tmp = fs::path(path) / ticker / (ticker + ".conf");
     free(path);
 #ifndef NATIVE_WINDOWS
-    path = strdup(tmp.c_str());
+    path = strdup(tmp.string().c_str());
 #else
     path = _strdup((const char *)tmp.c_str());
 #endif // !NATIVE_WINDOWS
