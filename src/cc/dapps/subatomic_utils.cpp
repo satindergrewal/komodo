@@ -7,12 +7,11 @@
 #include <algorithm>
 #include <fstream>
 #include <filesystem>
+namespace fs = std::filesystem;
 #include <iostream>
 #include <unordered_map>
 #include <string>
 
-
-namespace fs = std::filesystem;
 using t_config_key = std::string;
 using t_config_value = std::string;
 using t_config_registry = std::unordered_map<t_config_key, t_config_value>;
