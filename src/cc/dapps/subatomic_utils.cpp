@@ -7,10 +7,12 @@
 #include <algorithm>
 #include <fstream>
 #include <filesystem>
-namespace fs = std::filesystem;
 #include <iostream>
 #include <unordered_map>
 #include <string>
+
+
+namespace fs = std::filesystem;
 
 using t_config_key = std::string;
 using t_config_value = std::string;
@@ -40,11 +42,19 @@ char* construct_json(const char* method, size_t count, ...)
   va_end(ap);
   json += "] }";
   std::cout << "json: " << json << std::endl;
+#ifndef NATIVE_WINDOWS
   return strdup(json.c_str());
+#else
+  return _strdup(json.c_str());
+#endif // !NATIVE_WINDOWS
 }
 char* concatenate(const char* s1, const char* s2)
 {
+#ifndef NATIVE_WINDOWS
   return strdup((std::string(s1) + std::string(s2)).c_str());
+#else
+  return _strdup((std::string(s1) + std::string(s2)).c_str());
+#endif
 }
 
 int count_uppers(const std::string& s)
@@ -71,21 +81,33 @@ void dump_cfg() {
 char* get_komodo_config_path()
 {
   #ifdef _WIN32
-  fs::path conf_root = fs::path(std::getenv("APPDATA")) / ".komodo/komodo.conf";
+  fs::path conf_root = fs::path(std::getenv("APPDATA")) / "Komodo" / "komodo.conf";
+  std::cerr << conf_root << std::endl;
   #else
   fs::path conf_root = fs::path(std::getenv("HOME")) / ".komodo/komodo.conf";
   #endif
-  return strdup(conf_root.string().c_str());
+#ifndef NATIVE_WINDOWS
+  return strdup(conf_root.c_str());
+#else
+  return _strdup((const char *)conf_root.c_str());
+#endif // !NATIVE_WINDOWS
+
+  
 }
 
 char* get_komodo_config_parent_path()
 {
   #ifdef _WIN32
-  fs::path conf_root = fs::path(std::getenv("APPDATA")) / ".komodo";
+  fs::path conf_root = fs::path(std::getenv("APPDATA")) / "Komodo";
+  std::cerr << conf_root << std::endl;
   #else
   fs::path conf_root = fs::path(std::getenv("HOME")) / ".komodo";
   #endif
-  return strdup(conf_root.string().c_str());
+#ifndef NATIVE_WINDOWS
+  return strdup(conf_root.c_str());
+#else
+  return _strdup((const char*)conf_root.c_str());
+#endif // !NATIVE_WINDOWS
 }
 
 bool get_conf_content(const std::string& ticker, std::vector<std::string>& vec_out)
@@ -97,7 +119,11 @@ bool get_conf_content(const std::string& ticker, std::vector<std::string>& vec_o
     path = get_komodo_config_parent_path();
     auto tmp = fs::path(path) / ticker / (ticker + ".conf");
     free(path);
-    path = strdup(tmp.string().c_str());
+#ifndef NATIVE_WINDOWS
+    path = strdup(tmp.c_str());
+#else
+    path = _strdup((const char *)tmp.c_str());
+#endif // !NATIVE_WINDOWS
     std::cout << "ticker conf path: " << path << std::endl;
   }
   std::ifstream ifs(path);
@@ -108,7 +134,7 @@ bool get_conf_content(const std::string& ticker, std::vector<std::string>& vec_o
   while (std::getline(ifs, line))
     {
       if(line.size() > 0)
-	vec_out.push_back(line);
+  vec_out.push_back(line);
     }
   free(path);
   return true;
@@ -125,9 +151,9 @@ bool fill_config() {
     for (auto&& cur: out_lines) {
       //! Split left / right side
       if (cur.find("=") != std::string::npos) {
-	auto key = cur.substr(0, cur.find("="));
-	auto value = cur.substr(cur.find("=") + 1);
-	out[key] = value;
+  auto key = cur.substr(0, cur.find("="));
+  auto value = cur.substr(cur.find("=") + 1);
+  out[key] = value;
       }
     }
     using out_t = std::decay_t<decltype(out_map)>;
@@ -166,7 +192,7 @@ const char* get_rpcport(const char* ticker)
 {
   if (strcmp(ticker, "KMD") == 0) {
     if (conf.find("rpcport") != conf.end()) {
-	return conf["rpcport"].c_str();
+  return conf["rpcport"].c_str();
       } else {
       return "7776";
     }

@@ -394,7 +394,7 @@ cJSON *subatomic_txidwait(struct coininfo *coin,bits256 txid,char *hexstr,int32_
 
 int64_t subatomic_verifypayment(struct coininfo *coin,cJSON *rawtx,uint64_t destsatoshis,char *destaddr,bits256 txid)
 {
-    int32_t i,n,m,valid=0; bits256 tokenid,filehash,checkhash; cJSON *array,*item,*sobj,*a; char *addr,*acname,*coinstr,tokenaddr[64],*hex; uint8_t hexbuf[512],pub33[33]; uint64_t netval,recvsatoshis = 0;
+    int32_t i,n,m,valid=0; bits256 tokenid,filehash,checkhash; cJSON *array,*item,*sobj,*a; char *addr,*acname = 0,*coinstr,tokenaddr[64],*hex; uint8_t hexbuf[512],pub33[33]; uint64_t netval,recvsatoshis = 0;
     if ( coin->isfile != 0 )
     {
         filehash = jbits256(rawtx,"filehash");
@@ -616,7 +616,7 @@ cJSON *subatomic_mpjson(struct msginfo *mp)
 
 uint64_t subatomic_orderbook_mpset(struct msginfo *mp,char *basecheck)
 {
-    cJSON *retjson; char *tagA,*tagB,*senderpub,*str,tmpstr[32]; int32_t matches=0; double volA,volB; int64_t txfee=0;
+    cJSON *retjson; char *tagA = 0,*tagB = 0,*senderpub,*str,tmpstr[32]; int32_t matches=0; double volA,volB; int64_t txfee=0;
     snprintf(mp->base.name,strlen(basecheck) + 1,"%s",basecheck);
     snprintf(mp->base.coin,strlen(subatomic_checkname(tmpstr,mp,0,basecheck)) + 1,"%s",subatomic_checkname(tmpstr,mp,0,basecheck));
     mp->rel.txfee = subatomic_txfee(mp->rel.coin);
