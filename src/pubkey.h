@@ -218,9 +218,9 @@ public:
 };
 
 struct CExtPubKey {
-    unsigned char nDepth;
+    unsigned char nDepth = 0;
     unsigned char vchFingerprint[4];
-    unsigned int nChild;
+    unsigned int nChild = 0;
     ChainCode chaincode;
     CPubKey pubkey;
 
