@@ -272,7 +272,7 @@ CBlockTemplate* CreateNewBlock(CPubKey _pk,const CScript& _scriptPubKeyIn, int32
         {
             // too fast or stuck, this addresses the too fast issue, while moving
             // forward as quickly as possible
-            for (int i; i < 100; i++)
+            for (int i = 0; i < 100; i++)
             {
                 proposedTime = GetTime();
                 if (proposedTime == nMedianTimePast)
