@@ -53,7 +53,7 @@ jobs:
                              cmake \
                              clang \
                              libsodium-dev \
-                             python-zmq \
+                             python3-zmq \
                              mingw-w64 -y
         curl https://sh.rustup.rs -sSf | sh -s -- -y
         source $HOME/.cargo/env
