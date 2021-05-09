@@ -89,7 +89,6 @@ jobs:
           brew install wget
           brew install python3
           brew install gmp
-          ./zcutil/fetch-params.sh
       - name: Build (macOS)
         run: |
           ./zcutil/build-mac.sh -j4
