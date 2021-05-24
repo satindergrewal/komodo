@@ -281,16 +281,18 @@ static CC *secp256k1FromFulfillment(const Fulfillment_t *ffill, FulfillmentFlags
 
 
 static Fulfillment_t *secp256k1ToFulfillment(const CC *cond, FulfillmentFlags _flags) {
+    /* allow to serialise fulfillments with no signature, to allow 2of2
     if (!cond->signature) {
         return NULL;
-    }
+    }*/
 
     Fulfillment_t *ffill = calloc(1, sizeof(Fulfillment_t));
     ffill->present = Fulfillment_PR_secp256k1Sha256;
     Secp256k1Fulfillment_t *sec = &ffill->choice.secp256k1Sha256;
 
     OCTET_STRING_fromBuf(&sec->publicKey, cond->publicKey, SECP256K1_PK_SIZE);
-    OCTET_STRING_fromBuf(&sec->signature, cond->signature, SECP256K1_SIG_SIZE);
+    if (cond->signature)
+        OCTET_STRING_fromBuf(&sec->signature, cond->signature, SECP256K1_SIG_SIZE);
     return ffill;
 }
 
