@@ -184,7 +184,7 @@ int64_t IsGatewaysvout(struct CCcontract_info *cp,const CTransaction& tx,int32_t
 {
     char destaddr[64];
 
-    if ( tx.vout[v].scriptPubKey.IsCCV2() != 0 )
+    if ( tx.vout[v].scriptPubKey.IsPayToCCV2() != 0 )
     {
         if ( Getscriptaddress(destaddr,tx.vout[v].scriptPubKey) > 0 && strcmp(destaddr,cp->unspendableCCaddr) == 0 )
             return(tx.vout[v].nValue);

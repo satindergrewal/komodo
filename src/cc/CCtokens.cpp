@@ -599,7 +599,7 @@ CAmount TokensV2::CheckTokensvout(bool goDeeper, bool checkPubkeys, struct CCcon
         if (IsTokenMarkerVout<TokensV2>(tx.vout[v]))
             return 0;
 
-        if (tx.vout[v].scriptPubKey.HasEvalcodeCCV2(EVAL_TOKENSV2))  // it's token output, check it
+        if (tx.vout[v].scriptPubKey.SpkHasEvalcodeCCV2(EVAL_TOKENSV2))  // it's token output, check it
         {
             // get output pubkeys and verify vout
             if (vParams.size() == 0) {

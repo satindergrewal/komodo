@@ -389,7 +389,7 @@ bool CScript::IsPayToCryptoCondition() const
     return IsPayToCryptoCondition(NULL);
 }
 
-bool CScript::IsCCV2() const
+bool CScript::IsPayToCCV2() const
 {
     const_iterator pc = begin();
     std::vector<unsigned char> data;
@@ -417,7 +417,7 @@ const std::vector<unsigned char> CScript::GetCCV2SPK() const
     return (std::vector<unsigned char>());
 }
 
-bool CScript::HasEvalcodeCCV2(uint8_t evalCode) const
+bool CScript::SpkHasEvalcodeCCV2(uint8_t evalCode) const
 {
     std::vector<unsigned char> ccdata = this->GetCCV2SPK();
 

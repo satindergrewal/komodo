@@ -3006,7 +3006,7 @@ bool ContextualCheckOutputs(
 
         if (fScriptChecks) {
             for (unsigned int i = 0; i < tx.vout.size(); i++) {
-                if (tx.vout[i].scriptPubKey.IsCCV2() )
+                if (tx.vout[i].scriptPubKey.IsPayToCCV2() )
                 {
                     CScriptCheck check(tx.vout[i].scriptPubKey, tx.vout[i].nValue, tx, i, evalcodeChecker, &txdata);
                     if (pvChecks)

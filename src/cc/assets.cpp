@@ -411,7 +411,7 @@ static bool AssetsValidateInternal(struct CCcontract_info *cp, Eval* eval,const 
 
                 //GetTokensCCaddress(cpTokens, origTokenAddr, origpk, A::IsMixed());
                 if (tx.vout[2].scriptPubKey.IsPayToCryptoCondition())
-                    if (!tx.vout[2].scriptPubKey.IsCCV2() || tx.vout[2].scriptPubKey.HasEvalcodeCCV2(T::EvalCode()))  // have token change
+                    if (!tx.vout[2].scriptPubKey.IsPayToCCV2() || tx.vout[2].scriptPubKey.SpkHasEvalcodeCCV2(T::EvalCode()))  // have token change
                         ccvouts ++; //    preventCCvouts ++;
 
                 // check should not be assets cc vins:

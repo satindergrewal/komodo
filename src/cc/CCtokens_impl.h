@@ -410,7 +410,7 @@ UniValue TokenTransferExt(const CPubKey &remotepk, CAmount txfee, uint256 tokeni
                     CScript dummy;	
                     if (myGetTransaction(mtx.vin[ccvin].prevout.hash, vintx, hashBlock) &&
                         vintx.vout[mtx.vin[ccvin].prevout.n].scriptPubKey.IsPayToCryptoCondition(&dummy, vParams) &&  // get opdrop
-                        vintx.vout[mtx.vin[ccvin].prevout.n].scriptPubKey.HasEvalcodeCCV2(V::EvalCode()) &&
+                        vintx.vout[mtx.vin[ccvin].prevout.n].scriptPubKey.SpkHasEvalcodeCCV2(V::EvalCode()) &&
                         vParams.size() > 0)  
                     {
                         std::cerr << __func__ << " found vintx for vin=" << ccvin << std::endl;

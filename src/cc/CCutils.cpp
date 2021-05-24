@@ -499,7 +499,7 @@ bool ConstrainVoutV2(CTxOut vout, int32_t CCflag, char *cmpaddr, int64_t nValue,
 {
     if (ConstrainVout(vout, CCflag, cmpaddr, nValue))
         if (CCflag && evalCode != 0)
-            return vout.scriptPubKey.HasEvalcodeCCV2(evalCode);
+            return vout.scriptPubKey.SpkHasEvalcodeCCV2(evalCode);
         else
             return true;
     else
