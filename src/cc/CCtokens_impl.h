@@ -339,25 +339,6 @@ UniValue TokenTransferExt(const CPubKey &remotepk, CAmount txfee, uint256 tokeni
 	CMutableTransaction mtx = CreateNewContextualCMutableTransaction(Params().GetConsensus(), komodo_nextheight());
 	CAmount CCchange = 0, inputs = 0;  
     struct CCcontract_info *cp, C;
-    
-  CPubKey mypk1 = CPubKey( Mypubkey() );
-    uint8_t myprivkey[32];
-
-    // get privkey for mypk
-    CKeyID keyID = mypk1.GetID();
-    CKey vchSecret;
-    if (pwalletMain->GetKey(keyID, vchSecret))
-        memcpy(myprivkey, vchSecret.begin(), sizeof(myprivkey));
-	CMutableTransaction mtx1 = CreateNewContextualCMutableTransaction(Params().GetConsensus(), komodo_nextheight());
-
-    CPubKey pk1(ParseHex("035d3b0f2e98cf0fba19f80880ec7c08d770c6cf04aa5639bc57130d5ac54874db"));
-    CPubKey pk2(ParseHex("034777b18effce6f7a849b72de8e6810bf7a7e050274b3782e1b5a13d0263a44dc"));
-
-    CC *cond = MakeCCcond2of2(EVAL_TOKENS, pk1, pk2 );
-    uint8_t msg[32] = { 1 };
-    std::cerr << __func__ << " cc_signTreeSecp256k1Msg32 test=" << cc_signTreeSecp256k1Msg32(cond, myprivkey, msg) << std::endl;
-    CScript testscr = CCSig(cond);
-    std::cerr << __func__ << " testscr=" << testscr.ToString() << std::endl; 
 
 	if (total < 0)	{
         CCerror = strprintf("negative total");
