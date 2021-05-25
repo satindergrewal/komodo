@@ -599,8 +599,11 @@ CAmount TokensV2::CheckTokensvout(bool goDeeper, bool checkPubkeys, struct CCcon
         if (IsTokenMarkerVout<TokensV2>(tx.vout[v]))
             return 0;
 
+
         if (tx.vout[v].scriptPubKey.SpkHasEvalcodeCCV2(EVAL_TOKENSV2))  // it's token output, check it
         {
+            /* let's do not verify opdrop in V2
+            it is a just hint to users and does not really affect vaidation:
             // get output pubkeys and verify vout
             if (vParams.size() == 0) {
                 errorStr = "no opdrop data";
@@ -624,7 +627,8 @@ CAmount TokensV2::CheckTokensvout(bool goDeeper, bool checkPubkeys, struct CCcon
                 errorStr = "pubkeys in opdrop don't match vout";
                 return -1;
             }
-
+            */
+           
             return tx.vout[v].nValue;
         }
 	}
