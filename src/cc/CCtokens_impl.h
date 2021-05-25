@@ -402,8 +402,7 @@ UniValue TokenTransferExt(const CPubKey &remotepk, CAmount txfee, uint256 tokeni
             if (V::EvalCode() == EVAL_TOKENSV2) {
                 // if this is multisig - build and add multisig probes:
                 // find any token vin, load vin tx and extract M and pubkeys
-                int32_t ccvin;
-                for(ccvin = 0; ccvin < mtx.vin.size(); ccvin ++) { 
+                for(int ccvin = 0; ccvin < mtx.vin.size(); ccvin ++) { 
                     CTransaction vintx;
                     uint256 hashBlock;
                     std::vector<vscript_t> vParams;
@@ -413,7 +412,6 @@ UniValue TokenTransferExt(const CPubKey &remotepk, CAmount txfee, uint256 tokeni
                         vintx.vout[mtx.vin[ccvin].prevout.n].scriptPubKey.SpkHasEvalcodeCCV2(V::EvalCode()) &&
                         vParams.size() > 0)  
                     {
-                        std::cerr << __func__ << " found vintx for vin=" << ccvin << std::endl;
                         COptCCParams ccparams(vParams[0]);
                         if (ccparams.version != 0 && ccparams.m > 1)    {
                             CCwrapper ccprobeMofN( MakeTokensv2CCcondMofN(destEvalCode, 0, ccparams.m, ccparams.vKeys) );
@@ -421,10 +419,6 @@ UniValue TokenTransferExt(const CPubKey &remotepk, CAmount txfee, uint256 tokeni
                             break;
                         }
                     }
-                }
-                if (ccvin == mtx.vin.size()) {
-                    CCerror = "could not decode previous tx token output to build multisig probe";
-                    return NullUniValue;
                 }
             }
 
