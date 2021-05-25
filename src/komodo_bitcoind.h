@@ -2676,25 +2676,27 @@ int64_t komodo_coinsupply(int64_t *zfundsp,int64_t *sproutfundsp,int32_t height)
 }
 
 
-struct komodo_staking *komodo_addutxo(struct komodo_staking *array,int32_t *numkp,int32_t *maxkp,uint32_t txtime,uint64_t nValue,uint256 txid,int32_t vout,char *address,uint8_t *hashbuf,CScript pk)
+void komodo_addutxo(std::vector<struct komodo_staking> &array, int32_t *numkp, int32_t *maxkp, uint32_t txtime, uint64_t nValue, uint256 txid, int32_t vout, char *address, uint8_t *hashbuf, CScript pk)
 {
     uint256 hash; uint32_t segid32; struct komodo_staking *kp;
 
     segid32 = komodo_stakehash(&hash,address,hashbuf,txid,vout);
-    if ( *numkp >= *maxkp )
+    if (*numkp >= *maxkp)
     {
         *maxkp += 1000;
-        struct komodo_staking *newarray = (struct komodo_staking *)realloc(array,sizeof(*array) * (*maxkp));
-        if (newarray == NULL) {
+        array.resize(*maxkp);
+        if (array.size() != *maxkp) {
             fprintf(stderr, "%s could not allocate memory\n", __func__);
-            return array;   // prevent buf overflow, do not add utxo if no more mem allocated
+            return;   // prevent buf overflow, do not add utxo if no more mem allocated
         }
-        array = newarray;
         //fprintf(stderr,"realloc max.%d array.%p\n",*maxkp,array);
     }
     kp = &array[(*numkp)++];
     //fprintf(stderr,"kp.%p num.%d\n",kp,*numkp);
-    memset(kp,0,sizeof(*kp));
+
+    // not good to init c++ objects with memset, let's leave this to their constructors
+    // memset(kp,0,sizeof(*kp)); 
+    // pretty sure all members are init-ed here:
     strcpy(kp->address,address);
     kp->txid = txid;
     kp->vout = vout;
@@ -2702,13 +2704,19 @@ struct komodo_staking *komodo_addutxo(struct komodo_staking *array,int32_t *numk
     kp->txtime = txtime;
     kp->segid32 = segid32;
     kp->nValue = nValue;
-    kp->scriptPubKey = pk;
-    return(array);
+    kp->scriptPubKey = pk; 
 }
 
 int32_t komodo_staked(CMutableTransaction &txNew,uint32_t nBits,uint32_t *blocktimep,uint32_t *txtimep,uint256 *utxotxidp,int32_t *utxovoutp,uint64_t *utxovaluep,uint8_t *utxosig, uint256 merkleroot)
 {
-    static struct komodo_staking *array; static int32_t numkp,maxkp; static uint32_t lasttime;
+    // this malloc/free array did not free c++ objects like scriptPubKey as its destructor never called (memleak), 
+    // also this array as static could be overwritten when two stake threads are running concurrently during start/stop in GenerateBitcoins
+    // static struct komodo_staking *array; static int32_t numkp,maxkp; static uint32_t lasttime; 
+    // replaced to c++ vector and placed into TLS
+    thread_local std::vector<struct komodo_staking> array; 
+    thread_local int32_t numkp = 0, maxkp = 0; 
+    thread_local uint32_t lasttime = 0L;
+
     int32_t PoSperc = 0, newStakerActive; 
     set<CBitcoinAddress> setAddress; struct komodo_staking *kp; int32_t winners,segid,minage,nHeight,counter=0,i,m,siglen=0,nMinDepth = 1,nMaxDepth = 99999999; vector<COutput> vecOutputs; uint32_t block_from_future_rejecttime,besttime,eligible,earliest = 0; CScript best_scriptPubKey; arith_uint256 mindiff,ratio,bnTarget,tmpTarget; CBlockIndex *tipindex,*pindex; CTxDestination address; bool fNegative,fOverflow; uint8_t hashbuf[256]; CTransaction tx; uint256 hashBlock;
     uint64_t cbPerc = *utxovaluep, tocoinbase = 0;
@@ -2734,7 +2742,7 @@ int32_t komodo_staked(CMutableTransaction &txNew,uint32_t nBits,uint32_t *blockt
     // this was for VerusHash PoS64
     //tmpTarget = komodo_PoWtarget(&PoSperc,bnTarget,nHeight,ASSETCHAINS_STAKED);
     bool resetstaker = false;
-    if ( array != 0 )
+    if ( array.size() != 0 )
     {
         LOCK(cs_main);
         CBlockIndex* pblockindex = chainActive[tipindex->GetHeight()];
@@ -2748,14 +2756,13 @@ int32_t komodo_staked(CMutableTransaction &txNew,uint32_t nBits,uint32_t *blockt
         }
     }
 
-    if ( resetstaker || array == 0 || time(NULL) > lasttime+600 )
+    if ( resetstaker || array.size() == 0 || time(NULL) > lasttime+600 )
     {
         LOCK2(cs_main, pwalletMain->cs_wallet);
         pwalletMain->AvailableCoins(vecOutputs, false, NULL, true);
-        if ( array != 0 )
+        if (array.size() != 0)
         {
-            free(array);
-            array = 0;
+            array.clear();
             maxkp = numkp = 0;
             lasttime = 0;
         }
@@ -2785,7 +2792,7 @@ int32_t komodo_staked(CMutableTransaction &txNew,uint32_t nBits,uint32_t *blockt
                         continue;
                     if ( myGetTransaction(out.tx->GetHash(),tx,hashBlock) != 0 && (pindex= komodo_getblockindex(hashBlock)) != 0 )
                     {
-                        array = komodo_addutxo(array,&numkp,&maxkp,(uint32_t)pindex->nTime,(uint64_t)nValue,out.tx->GetHash(),out.i,(char *)CBitcoinAddress(address).ToString().c_str(),hashbuf,(CScript)pk);
+                        komodo_addutxo(array,&numkp,&maxkp,(uint32_t)pindex->nTime,(uint64_t)nValue,out.tx->GetHash(),out.i,(char *)CBitcoinAddress(address).ToString().c_str(),hashbuf,(CScript)pk);
                         //fprintf(stderr,"addutxo numkp.%d vs max.%d\n",numkp,maxkp);
                     }
                 }
@@ -2835,10 +2842,9 @@ int32_t komodo_staked(CMutableTransaction &txNew,uint32_t nBits,uint32_t *blockt
             }
         }
     }
-    if ( numkp < 500 && array != 0 )
+    if (numkp < 500 && array.size() != 0)
     {
-        free(array);
-        array = 0;
+        array.clear();
         maxkp = numkp = 0;
         lasttime = 0;
     }
