@@ -314,16 +314,6 @@ UniValue TokenFinalizeTransferTx(CMutableTransaction &mtx, struct CCcontract_inf
     }
 }
 
-CC *MakeCCcond2of2(uint8_t evalcode,CPubKey pk1,CPubKey pk2)
-{
-    std::vector<CC*> pks;
-    pks.push_back(CCNewSecp256k1(pk1));
-    pks.push_back(CCNewSecp256k1(pk2));
-    CC *condCC = CCNewEval(E_MARSHAL(ss << evalcode));
-    CC *Sig = CCNewThreshold(2, pks);
-    return CCNewThreshold(2, {condCC, Sig});
-}
-
 // token transfer extended version
 // params:
 // txfee - transaction fee, assumed 10000 if 0

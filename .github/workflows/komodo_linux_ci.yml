@@ -11,7 +11,7 @@ jobs:
   linux-build:
     name: Linux Build
     runs-on: ubuntu-latest
-    
+
     steps:
       - uses: actions/checkout@v2
 
@@ -117,7 +117,6 @@ jobs:
           ./zcutil/fetch-params.sh
           cd qa/pytest_komodo
           ./ci_setup.sh cc_modules/test_oracles.py
-
   linux-test-baserpc:
 
     name: Test (Linux/BasicRPC)
@@ -153,7 +152,6 @@ jobs:
           ./zcutil/fetch-params.sh
           cd qa/pytest_komodo
           ./ci_setup.sh basic
-
   linux-test-channels:
 
     name: Test (Linux/ChannelsCC)
@@ -189,7 +187,6 @@ jobs:
           ./zcutil/fetch-params.sh
           cd qa/pytest_komodo
           ./ci_setup.sh cc_modules/test_channels.py
-
   linux-test-heir:
 
     name: Test (Linux/HeirCC)
