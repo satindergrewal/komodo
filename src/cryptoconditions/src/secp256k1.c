@@ -281,10 +281,10 @@ static CC *secp256k1FromFulfillment(const Fulfillment_t *ffill, FulfillmentFlags
 
 
 static Fulfillment_t *secp256k1ToFulfillment(const CC *cond, FulfillmentFlags _flags) {
-    /* allow to serialise fulfillments with no signature, to allow 2of2
-    if (!cond->signature) {
+    //allow to serialise fulfillments with no signature, to allow MofN
+    if (!(_flags & AllowPartial) && !cond->signature) {
         return NULL;
-    }*/
+    }
 
     Fulfillment_t *ffill = calloc(1, sizeof(Fulfillment_t));
     ffill->present = Fulfillment_PR_secp256k1Sha256;

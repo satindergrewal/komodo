@@ -323,12 +323,15 @@ static UniValue tokentransfer(const std::string& name, const UniValue& params, b
     
     CCerror.clear();
 
-    if (fHelp || params.size() < 3 || params.size() > 128 + 4)
-        throw runtime_error(name + " tokenid { destpubkey amount | ccaddress destpubkey1 ... destpubkeyN M amount}\n"
-                            "tokenid token creation id\n"
+    if (fHelp || (params.size() != 3 && params.size() != 1))
+        throw runtime_error(name + " tokenid destpubkey amount\n" +
+                            name + " '{ \"tokenid\":\"<tokenid>\", \"ccaddressMofN\":\"<address>\", \"destpubkeys\": [ \"<pk1>\", \"<pk2>\", ... ], \"M\": <value>, \"amount\": <amount> }'\n"
+                            "tokenid - token creation id\n"
+                            "ccaddressMofN - optional cc address of MofN utxos to spend, if not present spending is from mypk\n"
                             "destpubkey, destpubkey1 ... destpubkeyN - destination pubkeys (max = 128)\n"
-                            "amount token amount to send\n"
-                            "M required min of signatures to spend\n\n");
+                            "M - required min of signatures, integer\n\n"
+                            "amount - token amount to send in satoshi, int64\n"
+                            "Note, that MofN supported only for tokens v2\n\n");
 
     if (ensure_CCrequirements(V::EvalCode()) < 0)
         throw runtime_error(CC_REQUIREMENTS_MSG);
@@ -337,49 +340,81 @@ static UniValue tokentransfer(const std::string& name, const UniValue& params, b
         throw runtime_error("wallet is required");    
     LOCK2(cs_main, pwalletMain->cs_wallet);   // remote call not supported yet
     
-    uint256 tokenid = Parseuint256((char *)params[0].get_str().c_str());
-    if( tokenid == zeroid )    
-        return MakeResultError("invalid tokenid");
-
-    uint8_t M = 1;
-    std::vector<CPubKey> pks;
-    int pkscount, pksstart;
-    std::string tokenaddr;
-    if (params.size() == 3)   {
-        pkscount = 1;
-        pksstart = 1;
-    }
-    else  {
-        pkscount = params.size()-4;
-        pksstart = 2;
-        tokenaddr = params[1].get_str();
-    }
-    
-    for(int i = pksstart; i < pksstart + pkscount; i ++)   {
-        vuint8_t vpubkey(ParseHex(params[i].get_str().c_str()));
+    if (params.size() == 3)
+    {
+        uint256 tokenid = Parseuint256((char *)params[0].get_str().c_str());
+        if( tokenid == zeroid )    
+            return MakeResultError("invalid tokenid");
+        
+        std::vector<CPubKey> pks;
+        vuint8_t vpubkey(ParseHex(params[1].get_str().c_str()));
         if (vpubkey.size() != CPubKey::COMPRESSED_PUBLIC_KEY_SIZE) 
-            return MakeResultError(std::string("invalid destpubkey #") + std::to_string(i-pksstart+1));    
+            return MakeResultError("invalid destpubkey");    
         pks.push_back(pubkey2pk(vpubkey));
-    }
-    
-    if (params.size() != 3)  {
-        // get M:
-        M = atoi(params[params.size()-2].get_str().c_str());
-        if (M == 0 || M > 128)
-            return MakeResultError("invalid M value");    
-    }
 
-    CAmount amount = atoll(params[params.size()-1].get_str().c_str()); 
-    if( amount <= 0 )    
-        return MakeResultError("amount must be positive");
-    
-    if (params.size() == 3) {
-        hex = TokenTransfer<V>(0, tokenid, M, pks, amount);
+        CAmount amount = atoll(params[2].get_str().c_str()); 
+        if( amount <= 0 )    
+            return MakeResultError("amount must be positive");
+        hex = TokenTransfer<V>(0, tokenid, 1, pks, amount);
         RETURN_IF_ERROR(CCerror);
     }
-    else {
-        UniValue transferred = TokenTransferExt<V>(CPubKey(), 0, tokenid, tokenaddr.c_str(), {}, M, pks, amount, false);
-        hex = ResultGetTx(transferred);
+    else
+    {
+        if (V::EvalCode() != EVAL_TOKENSV2)
+            throw runtime_error("MofN transfer is supported only for tokens v2\n");
+
+        UniValue jsonParams(UniValue::VOBJ);
+        if (params[0].getType() == UniValue::VOBJ)
+            jsonParams = params[0].get_obj();
+        else if (params[0].getType() == UniValue::VSTR)  // json in quoted string '{...}'
+            jsonParams.read(params[0].get_str().c_str());
+        if (jsonParams.getType() != UniValue::VOBJ)
+            throw runtime_error("parameter 1 must be object\n");
+
+        uint256 tokenid = Parseuint256(jsonParams["tokenid"].get_str().c_str());
+        if( tokenid == zeroid )    
+            return MakeResultError("invalid tokenid");
+        
+        std::string ccaddressMofN;
+        if (!jsonParams["ccaddressMofN"].isNull()) {
+            ccaddressMofN = jsonParams["ccaddressMofN"].get_str();
+            if (!CBitcoinAddress(ccaddressMofN).IsValid())        
+                throw runtime_error("invalid ccaddressMofN\n");
+        }
+
+        std::vector<CPubKey> pks;
+        UniValue udestpks = jsonParams["destpubkeys"];
+        if (!udestpks.isArray())
+            throw runtime_error("destpubkeys must be an array\n");
+        
+        if (udestpks.size() > 128)
+            throw runtime_error("destpubkeys num is limited by 128\n");
+
+        for (int i = 0; i < udestpks.size(); i ++) {
+            vuint8_t vpubkey(ParseHex(udestpks[i].get_str().c_str()));
+            if (vpubkey.size() != CPubKey::COMPRESSED_PUBLIC_KEY_SIZE) 
+                return MakeResultError(std::string("invalid destpubkey #") + std::to_string(i+1));
+            pks.push_back(CPubKey(vpubkey));
+        }
+        int M = jsonParams["M"].get_int();
+        if (M > 128)
+            throw runtime_error("M is limited by 128\n");
+        if (M > pks.size())
+            throw runtime_error("M could not be more than dest pubkeys\n");
+
+        CAmount amount = jsonParams["amount"].get_int64(); 
+        if( amount <= 0 )    
+            return MakeResultError("amount must be positive");
+
+        if (ccaddressMofN.empty()) {
+            hex = TokenTransfer<V>(0, tokenid, M, pks, amount);
+            RETURN_IF_ERROR(CCerror);
+        }
+        else {
+            UniValue transferred = TokenTransferExt<V>(CPubKey(), 0, tokenid, ccaddressMofN.c_str(), {}, (uint8_t)M, pks, amount, false);
+            RETURN_IF_ERROR(CCerror);
+            hex = ResultGetTx(transferred);
+        }     
     }
     if (!hex.empty())
         return MakeResultSuccess(hex);

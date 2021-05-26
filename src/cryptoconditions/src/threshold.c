@@ -179,7 +179,7 @@ static CC *thresholdFromFulfillmentMixed(const Fulfillment_t *ffill) {
 
 static CC *thresholdFromFulfillment(const Fulfillment_t *ffill, FulfillmentFlags flags) {
     if (flags & MixedMode) return thresholdFromFulfillmentMixed(ffill);
-
+    
     ThresholdFulfillment_t *t = ffill->choice.thresholdSha256;
     int threshold = t->subfulfillments.list.count;
     int size = threshold + t->subconditions.list.count;
@@ -257,12 +257,24 @@ static Fulfillment_t *thresholdToFulfillment(const CC *cond, FulfillmentFlags fl
         }
     }
 
-    free(subconditions);
+    // free(subconditions);
 
     if (needed) {
+        // dimxy: if fulfillments num < threshold then allow partial fulfilment signatures (to have partially signed MofN)
         ASN_STRUCT_FREE(asn_DEF_ThresholdFulfillment, tf);
-        return NULL;
+        tf = calloc(1, sizeof(ThresholdFulfillment_t));
+        for (int i=0; i<cond->size; i++) {
+            CC *sub = subconditions[i];
+            if (fulfillment = asnFulfillmentNew(sub, flags | AllowPartial)) {
+                asn_set_add(&tf->subfulfillments, fulfillment);
+            } else {
+                asn_set_add(&tf->subconditions, asnConditionNew(sub));
+            }
+        }
+        //return NULL;
     }
+
+    free(subconditions);
 
     fulfillment = calloc(1, sizeof(Fulfillment_t));
     fulfillment->present = Fulfillment_PR_thresholdSha256;
