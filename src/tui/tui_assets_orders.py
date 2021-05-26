@@ -3,6 +3,7 @@
 from lib import rpclib, tuilib
 import os
 import time
+import json
 
 # test creates fungible and non-fungible tokens
 # performs transfers and multiple transfers
@@ -93,8 +94,12 @@ def run_tokens_create(rpc):
         time.sleep(3)
 
         print("starting assets tests...")
-        run_assets_orders(rpc1, rpc2, v, tokenid1, 10, 8)
-        # run_assets_orders(rpc1, rpc2, v, nft_00_id1, 1, 1)
+        run_assets_orders(rpc1, rpc2, v, tokenid1, 10, 8, False)
+        run_assets_orders(rpc1, rpc2, v, nft_00_id1, 1, 1, True)
+
+    run_MofN_transfers(rpc1, rpc2, tokenid1, 10)
+    # run_MofN_transfers(rpc1, rpc2, nft_00_id1, 1)
+
 
     print("assets tests finished okay")
     time.sleep(3)
@@ -129,6 +134,31 @@ def call_token_rpc_send_tx(rpc, rpcname, stop_error, *args) :
     return txid
 
 
+
+def call_rpc_retry(rpc, rpcname, stop_error, *args) :
+    retries = 24
+    delay = 10
+    rpcfunc = getattr(rpc, rpcname)
+    for i in range(retries):
+        print("calling " + rpcname)
+        result = rpcfunc(*args)
+        print(rpcname + " result:", result)
+        if  check_result(result):
+            break
+        if stop_error and get_result_error(result) == stop_error :  
+            print(rpcname + " retrying stopped because of expected stop error received: " + stop_error)
+            return result
+        if i < retries-1:
+            print("retrying " + rpcname + '...')
+            time.sleep(delay)                
+    assert(check_result(result))
+    print(rpcname + " tx created")
+    return result
+
+def call_token_rpc(rpc, rpcname, stop_error, *args) :
+    print("calling " + rpcname + " for tokenid=", args[0])
+    return call_rpc_retry(rpc, rpcname, stop_error, *args)
+
 def run_transfers(rpc1, rpc2, v, tokenid1, tokenid2, nftid1, nftid2):
 
     amount  = 10
@@ -138,42 +168,117 @@ def run_transfers(rpc1, rpc2, v, tokenid1, tokenid2, nftid1, nftid2):
 
     # rpc1.setgenerate(True, 2)
 
-    for i in range(1):
+    if amount == 1 :
+        print("creating token"+v+"transfer tokenid1 amount tx...")
+        call_token_rpc_send_tx(rpc1, "token"+v+"transfer", '', tokenid1, pubkey2,  str(amount))
+    else :
+        # try two transfers
+        print("creating token"+v+"transfer tokenid1 amount-1 tx...")
+        call_token_rpc_send_tx(rpc1, "token"+v+"transfer", '', tokenid1, pubkey2,  str(amount-1))
+        print("creating token"+v+"transfer tokenid1 1 tx...")
+        call_token_rpc_send_tx(rpc1, "token"+v+"transfer", '', tokenid1, pubkey2,  str(1))
 
-        if amount == 1 :
-            print("creating token"+v+"transfer tokenid1 amount tx...")
-            call_token_rpc_send_tx(rpc1, "token"+v+"transfer", '', tokenid1, pubkey2,  str(amount))
-        else :
-            # try two transfers
-            print("creating token"+v+"transfer tokenid1 amount-1 tx...")
-            call_token_rpc_send_tx(rpc1, "token"+v+"transfer", '', tokenid1, pubkey2,  str(amount-1))
-            print("creating token"+v+"transfer tokenid1 1 tx...")
-            call_token_rpc_send_tx(rpc1, "token"+v+"transfer", '', tokenid1, pubkey2,  str(1))
+    print("creating token"+v+"transfer tokenid1 tx back...")
+    call_token_rpc_send_tx(rpc2, "token"+v+"transfer", '', tokenid1, pubkey1,  str(amount))
 
-        print("creating token"+v+"transfer tokenid1 tx back...")
-        call_token_rpc_send_tx(rpc2, "token"+v+"transfer", '', tokenid1, pubkey1,  str(amount))
+    print("creating token"+v+"transfer nftid1 tx...")
+    call_token_rpc_send_tx(rpc1, "token"+v+"transfer", '', nftid1, pubkey2,  str(1))
 
-        print("creating token"+v+"transfer nftid1 tx...")
-        call_token_rpc_send_tx(rpc1, "token"+v+"transfer", '', nftid1, pubkey2,  str(1))
+    print("creating token"+v+"transfer nftid1 tx back...")
+    call_token_rpc_send_tx(rpc2, "token"+v+"transfer", '', nftid1, pubkey1,  str(1))
 
-        print("creating token"+v+"transfer nftid1 tx back...")
-        call_token_rpc_send_tx(rpc2, "token"+v+"transfer", '', nftid1, pubkey1,  str(1))
+    print("creating token"+v+"transfermany tokenid1 tokenid2 tx...")
+    call_token_rpc_send_tx(rpc1, "token"+v+"transfermany", '', tokenid1, tokenid2, pubkey2,  str(amount))
 
-        print("creating token"+v+"transfermany tokenid1 tokenid2 tx...")
-        call_token_rpc_send_tx(rpc1, "token"+v+"transfermany", '', tokenid1, tokenid2, pubkey2,  str(amount))
+    print("creating token"+v+"transfermany tokenid1 tokenid2 tx back...")
+    call_token_rpc_send_tx(rpc2, "token"+v+"transfermany", '', tokenid1, tokenid2, pubkey1,  str(amount))
 
-        print("creating token"+v+"transfermany tokenid1 tokenid2 tx back...")
-        call_token_rpc_send_tx(rpc2, "token"+v+"transfermany", '', tokenid1, tokenid2, pubkey1,  str(amount))
+    print("creating token"+v+"transfermany nftid1 nftid2 tx...")
+    call_token_rpc_send_tx(rpc1, "token"+v+"transfermany", '', nftid1, nftid2, pubkey2,  str(1))
 
-        print("creating token"+v+"transfermany nftid1 nftid2 tx...")
-        call_token_rpc_send_tx(rpc1, "token"+v+"transfermany", '', nftid1, nftid2, pubkey2,  str(1))
-
-        print("creating token"+v+"transfermany nftid1 nftid2 tx back...")
-        call_token_rpc_send_tx(rpc2, "token"+v+"transfermany", '', nftid1, nftid2, pubkey1,  str(1))
+    print("creating token"+v+"transfermany nftid1 nftid2 tx back...")
+    call_token_rpc_send_tx(rpc2, "token"+v+"transfermany", '', nftid1, nftid2, pubkey1,  str(1))
 
 
+def run_MofN_transfers(rpc1, rpc2, tokenid, amount):
+   
+    pubkey1 = rpc1.getinfo()['pubkey']
+    pubkey2 = rpc2.getinfo()['pubkey']
 
-def run_assets_orders(rpc1, rpc2, v, tokenid, total, units):
+    if  amount > 1 :
+        amountback = int(amount / 2) # if not nft send half amount back twice
+    else :
+        amountback = amount
+ 
+
+    ccaddrpk1 = "RJRjg45Tcx8tsvv6bzqjUFFsajXoJMH6bR"
+    ccaddrpk2 = "RJkivfMQjLxfHyVHs1EY43Lr71YvLbZPL9"
+    ccaddr1of2 = "RNdhZvBMvbKVCBRNt21QCJzjAvoBLshPez"
+    ccaddr2of2 = "RMD2V7dgzfoy5xyupmiZ28v6fdNd73Gd2p"
+
+    # try 1of2
+    param = {}
+    param["tokenid"] = tokenid
+    param["destpubkeys"] = [ pubkey1, pubkey2 ]
+    param["M"] = 1
+    param["amount"] = amount
+    print("creating tokenv2transfer tokenid amount tx to 1of2 tx...", json.dumps(param))
+    call_token_rpc_send_tx(rpc1, "tokenv2transfer", '', json.dumps(param))
+    
+    param = {}
+    param["tokenid"] = tokenid
+    param["ccaddressMofN"] = ccaddr1of2
+    param["M"] = 1
+    param["amount"] = amountback
+    if amount > 1 :  # if not nft first send half to pk2 (to test lib cc fulfilment ordering)
+        # try firs1 to pk2
+        param["destpubkeys"] = [ pubkey2 ]
+        print("creating tokenv2transfer tokenid1 tx spending 1of2 back to pk2...", json.dumps(param))
+        call_token_rpc_send_tx(rpc2, "tokenv2transfer", '', json.dumps(param))
+    else :
+        # if nft send 1 back to pk1 for the next test
+        param["destpubkeys"] = [ pubkey1 ]
+        print("creating tokenv2transfer tokenid tx spending 1of2 back to pk1...", json.dumps(param))
+        call_token_rpc_send_tx(rpc1, "tokenv2transfer", '', json.dumps(param))
+
+    if amount > 1 :  # if not nft send half amount back to pk1
+        # wait to prevent adding same inputs while tx is not propagated to this node mempool
+        time.sleep(3)   
+        param["destpubkeys"] = [ pubkey1 ]
+        print("creating tokenv2transfer tokenid tx spending 1of2 back to pk1...",json.dumps(param))
+        call_token_rpc_send_tx(rpc1, "tokenv2transfer", '', json.dumps(param))
+
+
+    # try 2of2
+    param = {}
+    param["tokenid"] = tokenid
+    param["destpubkeys"] = [ pubkey1, pubkey2 ]
+    param["M"] = 2
+    param["amount"] = amount
+    print("creating tokenv2transfer tokenid amount tx to 2of2 ...", json.dumps(param))
+    call_token_rpc_send_tx(rpc1, "tokenv2transfer", '', json.dumps(param))
+
+    param = {}
+    param["tokenid"] = tokenid
+    param["ccaddressMofN"] = ccaddr2of2
+    param["destpubkeys"] = [ pubkey1 ]
+    param["M"] = 1
+    param["amount"] = amount
+    print("creating tokenv2transfer tokenid amount tx to 2of2 ...")
+    print("creating tokenv2transfer tokenid tx spending 2of2 back to pk1...", json.dumps(param))
+    partialtx = call_token_rpc(rpc1, "tokenv2transfer", '', json.dumps(param))
+    assert partialtx['hex'], 'partial tx not created'
+
+    tx2of2 = call_rpc_retry(rpc2, "addccv2signature", '', partialtx['hex'], ccaddr2of2)
+    assert tx2of2['hex'], 'sig 2 not added to tx'
+    txid = rpc2.sendrawtransaction(tx2of2['hex'])
+    print("sendrawtransaction result: ", txid)
+    assert(check_result(txid))            
+    print("tx 2of2 sent")
+
+
+
+def run_assets_orders(rpc1, rpc2, v, tokenid, total, units, isnft):
 
     retries = 24
     delay = 10
@@ -203,52 +308,63 @@ def run_assets_orders(rpc1, rpc2, v, tokenid, total, units):
     print("creating token"+v+"ask tx #1...")
     askid1 = call_token_rpc_send_tx(rpc1, "token"+v+"ask", '', str(total), tokenid, str(unitprice))
 
-    # create tokenask 2
-    print("creating token"+v+"ask tx #2...")
-    askid2 = call_token_rpc_send_tx(rpc1, "token"+v+"ask", '', str(total), tokenid, str(unitprice))
+    if not isnft :
+        # create tokenask 2
+        print("creating token"+v+"ask tx #2...")
+        askid2 = call_token_rpc_send_tx(rpc1, "token"+v+"ask", '', str(total), tokenid, str(unitprice))
 
-    # create tokenask 3
-    print("creating token"+v+"ask tx #2...")
-    askid3 = call_token_rpc_send_tx(rpc1, "token"+v+"ask", '', str(total), tokenid, str(unitprice))
+        # create tokenask 3
+        print("creating token"+v+"ask tx #3...")
+        askid3 = call_token_rpc_send_tx(rpc1, "token"+v+"ask", '', str(total), tokenid, str(unitprice))
 
     # fill ask 
-    print("creating token"+v+"fillask tx...")
-    fillaskid1 = call_token_rpc_send_tx(rpc2, "token"+v+"fillask", '', tokenid, askid3, str(askunits))
-    fillaskid2 = call_token_rpc_send_tx(rpc2, "token"+v+"fillask", '', tokenid, askid2, str(askunits))
-    fillaskid3 = call_token_rpc_send_tx(rpc2, "token"+v+"fillask", '', tokenid, askid1, str(askunits))
+    if not isnft :
+        print("creating token"+v+"fillask tx #1 in backward order...")
+        fillaskid1 = call_token_rpc_send_tx(rpc2, "token"+v+"fillask", '', tokenid, askid3, str(askunits))
+        print("creating token"+v+"fillask tx #2...")
+        fillaskid2 = call_token_rpc_send_tx(rpc2, "token"+v+"fillask", '', tokenid, askid2, str(askunits))
+        print("creating token"+v+"fillask tx #3...")
+        fillaskid3 = call_token_rpc_send_tx(rpc2, "token"+v+"fillask", '', tokenid, askid1, str(askunits))
+    else :
+        print("creating token"+v+"fillask tx #1...")
+        fillaskid1 = call_token_rpc_send_tx(rpc2, "token"+v+"fillask", '', tokenid, askid1, str(askunits))
 
 
     # cancel ask
     print("creating token"+v+"cancelask tx #1...")
     cancelid = call_token_rpc_send_tx(rpc1, "token"+v+"cancelask", 'ask is empty', tokenid, fillaskid1)
-    print("creating token"+v+"cancelask tx #2...")
-    cancelid = call_token_rpc_send_tx(rpc1, "token"+v+"cancelask", 'ask is empty', tokenid, fillaskid2)
-    print("creating token"+v+"cancelask tx #3...")
-    cancelid = call_token_rpc_send_tx(rpc1, "token"+v+"cancelask", 'ask is empty', tokenid, fillaskid3)
+    if not isnft :
+        print("creating token"+v+"cancelask tx #2...")
+        cancelid = call_token_rpc_send_tx(rpc1, "token"+v+"cancelask", 'ask is empty', tokenid, fillaskid2)
+        print("creating token"+v+"cancelask tx #3...")
+        cancelid = call_token_rpc_send_tx(rpc1, "token"+v+"cancelask", 'ask is empty', tokenid, fillaskid3)
 
     # create tokenbid to buy back tokens - same amount
     print("creating token"+v+"bid tx #1...")
     bidid1 = call_token_rpc_send_tx(rpc1, "token"+v+"bid", '', str(askunits), tokenid, str(unitprice))
-    print("creating token"+v+"bid tx #2...")
-    bidid2 = call_token_rpc_send_tx(rpc1, "token"+v+"bid", '', str(askunits), tokenid, str(unitprice))
-    print("creating token"+v+"bid tx #3...")
-    bidid3 = call_token_rpc_send_tx(rpc1, "token"+v+"bid", '', str(askunits), tokenid, str(unitprice))
+    if not isnft :
+        print("creating token"+v+"bid tx #2...")
+        bidid2 = call_token_rpc_send_tx(rpc1, "token"+v+"bid", '', str(askunits), tokenid, str(unitprice))
+        print("creating token"+v+"bid tx #3...")
+        bidid3 = call_token_rpc_send_tx(rpc1, "token"+v+"bid", '', str(askunits), tokenid, str(unitprice))
 
     # fill bid 
     print("creating token"+v+"fillbid tx #1...")
     fillbidid1 = call_token_rpc_send_tx(rpc2, "token"+v+"fillbid", '', tokenid, bidid1, str(bidunits))
-    print("creating token"+v+"fillbid tx #2...")
-    fillbidid2 = call_token_rpc_send_tx(rpc2, "token"+v+"fillbid", '', tokenid, bidid2, str(bidunits))
-    print("creating token"+v+"fillbid tx #3...")
-    fillbidid3 = call_token_rpc_send_tx(rpc2, "token"+v+"fillbid", '', tokenid, bidid3, str(bidunits))
+    if not isnft :
+        print("creating token"+v+"fillbid tx #2...")
+        fillbidid2 = call_token_rpc_send_tx(rpc2, "token"+v+"fillbid", '', tokenid, bidid2, str(bidunits))
+        print("creating token"+v+"fillbid tx #3...")
+        fillbidid3 = call_token_rpc_send_tx(rpc2, "token"+v+"fillbid", '', tokenid, bidid3, str(bidunits))
 
     # cancel bid
     print("creating token"+v+"cancelbid tx #1...")
     cancelid = call_token_rpc_send_tx(rpc1, "token"+v+"cancelbid", 'bid is empty', tokenid, fillbidid1)
-    print("creating token"+v+"cancelbid tx #2...")
-    cancelid = call_token_rpc_send_tx(rpc1, "token"+v+"cancelbid", 'bid is empty', tokenid, fillbidid2)
-    print("creating token"+v+"cancelbid tx #3...")
-    cancelid = call_token_rpc_send_tx(rpc1, "token"+v+"cancelbid", 'bid is empty', tokenid, fillbidid3)
+    if not isnft :
+        print("creating token"+v+"cancelbid tx #2...")
+        cancelid = call_token_rpc_send_tx(rpc1, "token"+v+"cancelbid", 'bid is empty', tokenid, fillbidid2)
+        print("creating token"+v+"cancelbid tx #3...")
+        cancelid = call_token_rpc_send_tx(rpc1, "token"+v+"cancelbid", 'bid is empty', tokenid, fillbidid3)
 
     # check balance after 
     retries = 24
