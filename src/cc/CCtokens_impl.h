@@ -382,8 +382,6 @@ UniValue TokenTransferExt(const CPubKey &remotepk, CAmount txfee, uint256 tokeni
             }
 
             mtx.vout.push_back(V::MakeTokensCCMofNvout(destEvalCode, 0, total, M, destpubkeys)); 
-			if (CCchange != 0)
-				mtx.vout.push_back(V::MakeTokensCC1vout(destEvalCode, CCchange, mypk));
 
             // add optional custom probe conds to non-usual sign vins
             for (const auto &p : probeconds)
@@ -403,7 +401,12 @@ UniValue TokenTransferExt(const CPubKey &remotepk, CAmount txfee, uint256 tokeni
                         vParams.size() > 0)  
                     {
                         COptCCParams ccparams(vParams[0]);
-                        if (ccparams.version != 0 && ccparams.m > 1)    {
+                        if (ccparams.version != 0 && ccparams.vKeys.size() > 1)    {
+                            if (CCchange != 0) {
+                                mtx.vout.push_back(V::MakeTokensCCMofNvout(destEvalCode, 0, CCchange, ccparams.m, ccparams.vKeys));
+                                CCchange = 0;
+                            }
+
                             CCwrapper ccprobeMofN( MakeTokensv2CCcondMofN(destEvalCode, 0, ccparams.m, ccparams.vKeys) );
                             CCAddVintxCond(cp, ccprobeMofN, nullptr); //add MofN probe to find vins and sign
                             break;
@@ -412,6 +415,8 @@ UniValue TokenTransferExt(const CPubKey &remotepk, CAmount txfee, uint256 tokeni
                 }
             }
 
+			if (CCchange != 0)
+				mtx.vout.push_back(V::MakeTokensCC1vout(destEvalCode, CCchange, mypk));
 
             // TODO maybe add also opret blobs form vintx
             // as now this TokenTransfer() allows to transfer only tokens (including NFTs) that are unbound to other cc
