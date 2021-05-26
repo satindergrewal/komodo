@@ -36,7 +36,8 @@ typedef char bool;
  */
 
 typedef enum {
-    MixedMode = 1 << 0
+    MixedMode = 1 << 0,
+    AllowPartial = 1 << 1,
 } FulfillmentFlags;
 
 
