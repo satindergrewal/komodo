@@ -379,6 +379,7 @@ static UniValue tokentransfer(const std::string& name, const UniValue& params, b
     }
     else {
         UniValue transferred = TokenTransferExt<V>(CPubKey(), 0, tokenid, tokenaddr.c_str(), {}, M, pks, amount, false);
+        RETURN_IF_ERROR(CCerror);
         hex = ResultGetTx(transferred);
     }
     if (!hex.empty())
