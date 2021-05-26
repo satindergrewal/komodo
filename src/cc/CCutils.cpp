@@ -923,16 +923,10 @@ bool komodo_txnotarizedconfirmed(uint256 txid, int32_t minconfirms)
 #ifdef TESTMODE           
     notarized=0;
 #endif //TESTMODE
-std::cerr << __func__ << " notarized=" << notarized << " confirms=" << confirms << " minimumconfirms=" << minimumconfirms << std::endl;
-    if (notarized>0 && confirms > 1) {
-        std::cerr << __func__ << " returning true (1)" << std::endl;
+    if (notarized>0 && confirms > 1)
         return (true);
-    }
-    else if (notarized==0 && confirms >= minimumconfirms) {
-        std::cerr << __func__ << " returning true (2)" << std::endl;
+    else if (notarized==0 && confirms >= minimumconfirms)
         return (true);
-    }
-    std::cerr << __func__ << " returning false" << std::endl;
     return (false);
 }
 
